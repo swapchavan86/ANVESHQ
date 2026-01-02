@@ -1,0 +1,27 @@
+# --- Security / Secrets (NEVER COMMIT THIS) ---
+.env
+.env.*
+
+# --- Python Virtual Environment ---
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- IDE / Editor Settings ---
+.vscode/
+.idea/
+.DS_Store
+
+# --- Testing Artifacts ---
+.pytest_cache/
+tests/test_data.db
+*.db
+*.sqlite3
+
+# --- Distribution / Builds ---
+build/
+dist/
+*.egg-info/
+node_modules

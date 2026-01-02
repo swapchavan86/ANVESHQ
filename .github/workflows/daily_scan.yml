@@ -1,0 +1,36 @@
+name: Daily Momentum Scan
+
+on:
+  schedule:
+    # Runs at 12:30 UTC every day (6:00 PM IST)
+    - cron: '30 12 * * *'
+  workflow_dispatch: # Allows manual trigger for testing
+
+jobs:
+  run-scanner:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Script
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+          # Logic Config overrides (optional)
+          MODE: ${{ secrets.MODE }}
+          NSE_STOCKS_URL: ${{ secrets.NSE_STOCKS_URL }}
+          BSE_STOCKS_URL: ${{ secrets.BSE_STOCKS_URL }}
+        working-directory: Backend
+        run: |
+          python -m src.main
