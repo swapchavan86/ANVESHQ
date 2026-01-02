@@ -123,7 +123,7 @@ class StockFetcher:
         logger.info(f"--- Starting Batch {batch_id} ---")
         for i in range(3): # Retry up to 3 times
             try:
-                data = yf.download(batch_tickers, period="1y", group_by='ticker', threads=True, progress=False, auto_adjust=True)
+                data = yf.download(batch_tickers, period="1y", group_by='ticker', threads=False, progress=False, auto_adjust=True)
                 break # If successful, break the loop
             except RuntimeError as e:
                 if "dictionary changed size during iteration" in str(e):
@@ -136,9 +136,9 @@ class StockFetcher:
                         ErrorLogger.log_error(session, str(e))
                     return
             except Exception as e:
-                logger.error(f"Batch {batch_id} error: {e}")
+                logger.error(f"Batch {batch_id} error: {type(e).__name__} - {e}")
                 with get_db_context() as session:
-                    ErrorLogger.log_error(session, str(e))
+                    ErrorLogger.log_error(session, f"{type(e).__name__} - {e}")
                 return
         else:
             logger.error(f"Batch {batch_id} failed after 3 retries.")
@@ -160,7 +160,11 @@ class StockFetcher:
                 try:
                     df = data.get(symbol)
                     
-                    if df is None or df.empty: continue
+                    if df is None or df.empty:
+                        logger.error(f"Error processing {symbol}: Data not found or empty dataframe.")
+                        with get_db_context() as session:
+                            ErrorLogger.log_error(session, f"Data not found or empty dataframe for ticker: {symbol}")
+                        continue
                     df = df.dropna(subset=['Close'])
                     if len(df) < 200: continue
 
@@ -187,27 +191,28 @@ class StockFetcher:
                         engine_svc.update_ranking(symbol, current_close, low_52, high_date)
 
                 except Exception as e:
-                    logger.error(f"Error processing {symbol}: {e}")
+                    logger.error(f"Error processing {symbol}: {type(e).__name__} - {e}")
                     with get_db_context() as session:
-                        ErrorLogger.log_error(session, str(e))
+                        ErrorLogger.log_error(session, f"{type(e).__name__} - {e}")
                     continue
 
     @staticmethod
-    def scan_stocks_parallel(tickers: list[str], batch_size: int = 100, max_workers: int = 20):
+    def scan_stocks_parallel(tickers: list[str], batch_size: int = 100, max_workers: int = 10):
         total = len(tickers)
         logger.info(f"Starting Parallel Scan for {total} stocks...")
         batches = [tickers[i:i + batch_size] for i in range(0, total, batch_size)]
         
         current_settings = get_settings() # Get settings here once
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = []
-            for i, batch in enumerate(batches):
-                futures.append(executor.submit(StockFetcher.process_single_batch, batch, i+1, current_settings)) # Pass current_settings
+        executor = ThreadPoolExecutor(max_workers=max_workers)
+        try:
+            futures = [executor.submit(StockFetcher.process_single_batch, batch, i+1, current_settings) for i, batch in enumerate(batches)]
             
             completed = 0
             for f in as_completed(futures):
                 completed += 1
                 logger.info(f"Progress: {completed}/{len(batches)} batches done.")
+        finally:
+            executor.shutdown(wait=True)
 
 # --- CLASS 4: VALIDATOR ---
 class MarketValidator:

@@ -61,6 +61,7 @@ def main():
     StockFetcher.scan_stocks_parallel(tickers, batch_size=50, max_workers=10)
             
     logger.info("--- Job Completed Successfully ---")
+    os._exit(0)
 
 if __name__ == "__main__":
     main()
