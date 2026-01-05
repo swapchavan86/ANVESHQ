@@ -10,8 +10,12 @@ class Settings(BaseSettings):
     MODE: str
     DATABASE_URL: Optional[str] = None
     TEST_DATABASE_URL: str
-    NSE_STOCKS_URL: str
-    BSE_STOCKS_URL: str
+    
+    # --- Universe Source URLs ---
+    NSE_EQUITY_MASTER_API_URL: str = "https://www.nseindia.com/api/equity-master"
+    NSE_NIFTY500_CSV_URL: str = "https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv"
+    BSE_CM_CSV_URL: str = "https://public.fyers.in/sym_details/BSE_CM.csv"
+
     FUNDAMENTAL_CHECK_ENABLED: bool = False
     
     STREAK_THRESHOLD_DAYS: int = 10
@@ -22,8 +26,8 @@ class Settings(BaseSettings):
     DECAY_FACTOR: float = 0.8
     
     # --- UPDATED FOR GROWTH STOCKS ---
-    # 250 Cr -> 100 Cr (To catch  micro/Small/Micro Cap Growth Stocks)
-    MIN_MCAP_CRORES: float = 250.0 
+    # 500 Cr -> 100 Cr (To catch Small/Micro Cap Growth Stocks)
+    MIN_MCAP_CRORES: float = 500.0 
 
     LOG_LEVEL: str = "INFO"
     
