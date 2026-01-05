@@ -208,36 +208,34 @@ class StockFetcher:
         logger.info(f"--- Starting Batch {batch_id} ---")
         qualified_symbols = set()
         
-        for i in range(3): # Retry loop
-            try:
-                data = yf.download(batch_tickers, period="1y", group_by='ticker', threads=False, progress=False, auto_adjust=True)
-                break
-            except Exception as e:
-                logger.warning(f"Batch {batch_id} download failed, retry {i+1}/3. Error: {e}")
-                time.sleep(1)
-        else:
-            logger.error(f"Batch {batch_id} failed after 3 retries.")
+        try:
+            data = yf.download(batch_tickers, period="1y", group_by='ticker', threads=False, progress=False, auto_adjust=True)
+        except Exception as e:
+            logger.error(f"Batch {batch_id} download failed with exception: {e}")
             return qualified_symbols
 
-        if isinstance(data, pd.DataFrame) and data.empty:
+        if data.empty:
             return qualified_symbols
-        
-        if not isinstance(data, dict):
-            if len(batch_tickers) == 1:
-                data = {batch_tickers[0]: data}
-            else:
-                logger.error(f"Batch {batch_id} did not return a dict with group_by='ticker'.")
-                return qualified_symbols
 
         with get_db_context() as session:
             engine_svc = RankingEngine(session, settings_obj)
             
             for symbol in batch_tickers:
                 try:
-                    df = data.get(symbol)
-                    
+                    df = None
+                    if isinstance(data, dict):
+                        df = data.get(symbol)
+                    elif isinstance(data, pd.DataFrame):
+                        # Handle multi-level columns if symbol exists
+                        if symbol in data.columns.get_level_values(1):
+                             df = data.xs(symbol, level=1, axis=1)
+                        # Handle single-level columns for single-ticker batches
+                        elif len(batch_tickers) == 1:
+                            df = data
+
                     if df is None or df.empty or 'Close' not in df:
                         continue
+                    
                     df = df.dropna(subset=['Close', 'High', 'Low', 'Volume'])
                     if len(df) < 200: continue
 
@@ -252,24 +250,18 @@ class StockFetcher:
                     if current_close < settings_obj.MIN_PRICE: continue
                     if current_close < (high_52 * 0.90): continue
 
-                    is_liquid, liq_reason = FraudDetector.relative_liquidity_check(df)
-                    if not is_liquid:
-                        # logger.info(f"📋 SKIP {symbol}: {liq_reason}")
-                        continue
+                    is_liquid, _ = FraudDetector.relative_liquidity_check(df)
+                    if not is_liquid: continue
 
-                    is_confirmed, vol_reason = FraudDetector.volume_confirmation(df)
-                    if not is_confirmed:
-                        # logger.info(f"📋 SKIP {symbol}: {vol_reason}")
-                        continue
+                    is_confirmed, _ = FraudDetector.volume_confirmation(df)
+                    if not is_confirmed: continue
                         
                     if settings_obj.FUNDAMENTAL_CHECK_ENABLED:
                         if not FraudDetector.deep_fundamental_check(symbol, settings_obj):
                             continue
 
                     # --- PASSED ALL FILTERS ---
-                    # --- RISK SCORING (for logging only) ---
                     risk_score, risk_reasons = FraudDetector.calculate_risk_score(df, current_close, high_52)
-                    
                     logger.info(f"✅ QUALIFIED: {symbol} | Price: {current_close:.2f} | Risk: {risk_score} ({', '.join(risk_reasons)})")
 
                     # --- PERSISTENCE ---
