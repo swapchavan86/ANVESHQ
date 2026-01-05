@@ -17,9 +17,13 @@ class Settings(BaseSettings):
     STREAK_THRESHOLD_DAYS: int = 10
     MIN_PRICE: float = 20.0
     
+    # --- Momentum Rank System ---
+    MAX_RANK: int = 10
+    DECAY_FACTOR: float = 0.8
+    
     # --- UPDATED FOR GROWTH STOCKS ---
-    # 500 Cr -> 100 Cr (To catch Small/Micro Cap Growth Stocks)
-    MIN_MCAP_CRORES: float = 100.0 
+    # 250 Cr -> 100 Cr (To catch  micro/Small/Micro Cap Growth Stocks)
+    MIN_MCAP_CRORES: float = 250.0 
 
     LOG_LEVEL: str = "INFO"
     
