@@ -27,15 +27,16 @@ class FraudDetector:
         """
         if len(df) < 180: return False, "Insufficient history for liquidity check"
         
-        df['Turnover'] = df['Close'] * df['Volume']
-        median_turnover_10d = df['Turnover'].tail(10).median()
-        median_turnover_180d = df['Turnover'].tail(180).median()
+        # Calculate turnover without modifying the original DataFrame
+        turnover = df['Close'] * df['Volume']
+        median_turnover_10d = turnover.tail(10).median()
+        median_turnover_180d = turnover.tail(180).median()
 
         if median_turnover_180d == 0: return False, "Zero median turnover in last 180 days"
 
         # Allow recent turnover to be slightly lower, but not drastically.
         # e.g., if recent is 0.6 of historical, it's a potential flag.
-        if (median_turnover_10d / median_turnover_180d) < 0.7:
+        if (median_turnover_10d / median_turnover_180d) < 0.4:
             return False, f"Relative liquidity failure ({median_turnover_10d:.2f} vs {median_turnover_180d:.2f})"
         return True, None
 
@@ -52,7 +53,7 @@ class FraudDetector:
 
         if avg_vol_30d == 0: return False, "Zero average volume in last 30 days"
 
-        if (avg_vol_5d / avg_vol_30d) < 1.5:
+        if (avg_vol_5d / avg_vol_30d) < 1.1:
             return False, f"Weak volume confirmation ({avg_vol_5d:.0f} vs {avg_vol_30d:.0f})"
         return True, None
     
@@ -247,14 +248,21 @@ class StockFetcher:
                     low_52 = float(df['Low'].min())
                     
                     # --- FILTERING LOGIC ---
-                    if current_close < settings_obj.MIN_PRICE: continue
-                    if current_close < (high_52 * 0.90): continue
+                    if current_close < settings_obj.MIN_PRICE:
+                        continue
 
-                    is_liquid, _ = FraudDetector.relative_liquidity_check(df)
-                    if not is_liquid: continue
+                    if current_close < (high_52 * 0.85):
+                        continue
 
-                    is_confirmed, _ = FraudDetector.volume_confirmation(df)
-                    if not is_confirmed: continue
+                    is_liquid, liq_reason = FraudDetector.relative_liquidity_check(df)
+                    if not is_liquid:
+                        logger.info(f"📋 SKIP {symbol}: {liq_reason}")
+                        continue
+
+                    is_confirmed, vol_reason = FraudDetector.volume_confirmation(df)
+                    if not is_confirmed:
+                        logger.info(f"📋 SKIP {symbol}: {vol_reason}")
+                        continue
                         
                     if settings_obj.FUNDAMENTAL_CHECK_ENABLED:
                         if not FraudDetector.deep_fundamental_check(symbol, settings_obj):
