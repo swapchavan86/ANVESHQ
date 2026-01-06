@@ -1,4 +1,4 @@
-name: Fluxmind: Daily Intelligence Engine
+name: 'Fluxmind: Daily Intelligence Engine'
 
 on:
   schedule:
