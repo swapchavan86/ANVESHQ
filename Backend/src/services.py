@@ -261,27 +261,27 @@ class StockFetcher:
                         high_date = high_date_idx.date() if isinstance(high_date_idx, pd.Timestamp) else high_date_idx
                         engine_svc.update_ranking(symbol, current_close, float(df['Low'].min()), high_date)
                         qualified_symbols.add(symbol)
-                                    except Exception as e:
-                                        logger.error(f"Error processing {symbol}: {type(e).__name__} - {e}", exc_info=True)
-                                        with get_db_context() as error_session:
-                                            ErrorLogger.log_error(
-                                                error_session, 
-                                                f"Processing Error: {type(e).__name__}", 
-                                                details={"symbol": symbol, "batch_id": batch_id, "error": str(e)}
-                                            )
-                                        continue
-                                session.commit()
-                                logger.info(f"--- Finished Batch {batch_id}, Committing {len(qualified_symbols)} updates ---")
-                            except Exception as e:
-                                logger.error(f"--- Batch {batch_id} failed, rolling back ---", exc_info=True)
-                                session.rollback()
-                                with get_db_context() as error_session:
-                                    ErrorLogger.log_error(
-                                        error_session, 
-                                        f"Batch Processing Error: {type(e).__name__}", 
-                                        details={"batch_id": batch_id, "error": str(e)}
-                                    )
-                            return qualified_symbols
+                    except Exception as e:
+                        logger.error(f"Error processing {symbol}: {type(e).__name__} - {e}", exc_info=True)
+                        with get_db_context() as error_session:
+                            ErrorLogger.log_error(
+                                error_session, 
+                                f"Processing Error: {type(e).__name__}", 
+                                details={"symbol": symbol, "batch_id": batch_id, "error": str(e)}
+                            )
+                        continue
+                session.commit()
+                logger.info(f"--- Finished Batch {batch_id}, Committing {len(qualified_symbols)} updates ---")
+            except Exception as e:
+                logger.error(f"--- Batch {batch_id} failed, rolling back ---", exc_info=True)
+                session.rollback()
+                with get_db_context() as error_session:
+                    ErrorLogger.log_error(
+                        error_session, 
+                        f"Batch Processing Error: {type(e).__name__}", 
+                        details={"batch_id": batch_id, "error": str(e)}
+                    )
+            return qualified_symbols
     @staticmethod
     def scan_stocks_parallel(tickers: list[str], batch_size: int = 100, max_workers: int = 10):
         
