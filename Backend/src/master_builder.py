@@ -1,7 +1,7 @@
 """
-This script is responsible for building a stable, versioned reference universe of stocks.
+This script, the Rootset builder, is responsible for building a stable, versioned reference universe of stocks.
 It fetches data from multiple sources in a tiered approach to ensure robustness and coverage.
-The output is a versioned JSON file that serves as the master list for the daily momentum scanner.
+The output is a versioned JSON file that serves as the canonical list for the Fluxmind engine.
 This process is designed to be run weekly to avoid daily dependencies on live, potentially unstable,
 data sources.
 """
@@ -15,9 +15,9 @@ import logging
 from src.config import get_settings
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='[NEXARA:ROOTSET] [%(levelname)s] %(message)s')
 
-# Define the directory to store the master data files.
+# Define the directory to store the Rootset data files.
 DATA_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'master')
 SNAPSHOT_FILENAME_TEMPLATE = "master-{}.json"
 LATEST_FILENAME = "master-latest.json"
@@ -37,9 +37,9 @@ def get_bse_equity_list(url: str):
     return pd.DataFrame(columns=['ISIN', 'Symbol', 'Security Name'])
 
 
-def master_data_builder():
+def rootset_builder():
     """
-    Builds a stable, versioned reference universe from multiple sources.
+    Builds a stable, versioned reference universe (Rootset) from multiple sources.
     The logic is tiered to prioritize the most reliable sources.
     
     Tier 1: NSE Equity Master - The primary source of truth for all NSE-listed equities.
@@ -48,7 +48,7 @@ def master_data_builder():
     
     The final output is a JSON file with a timestamped snapshot and a 'latest' alias.
     """
-    logging.info("Starting master data builder job.")
+    logging.info("Starting Rootset builder job.")
     settings = get_settings()
 
     # Create data directory if it doesn't exist. This is where the JSON files will be stored.
@@ -128,21 +128,21 @@ def master_data_builder():
         "records": output_records
     }
 
-    # Save a timestamped snapshot of the master list.
+    # Save a timestamped snapshot of the Rootset.
     snapshot_filepath = os.path.join(DATA_DIR, SNAPSHOT_FILENAME_TEMPLATE.format(snapshot_date))
     with open(snapshot_filepath, 'w') as f:
         json.dump(output_json, f, indent=2)
-    logging.info(f"Saved snapshot to {snapshot_filepath}")
+    logging.info(f"Saved Rootset snapshot to {snapshot_filepath}")
 
-    # Create/overwrite the 'latest' alias for the daily scanner to use.
+    # Create/overwrite the 'latest' alias for the Fluxmind engine to use.
     latest_filepath = os.path.join(DATA_DIR, LATEST_FILENAME)
     with open(latest_filepath, 'w') as f:
         json.dump(output_json, f, indent=2)
-    logging.info(f"Saved latest alias to {latest_filepath}")
+    logging.info(f"Saved latest Rootset alias to {latest_filepath}")
 
-    logging.info("Master data builder job finished successfully.")
+    logging.info("Rootset builder job finished successfully.")
 
 
 if __name__ == "__main__":
-    master_data_builder()
+    rootset_builder()
 
