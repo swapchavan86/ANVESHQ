@@ -27,7 +27,7 @@ jobs:
       - name: Run Fluxmind Engine
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL || '' }}
           MODE: ${{ secrets.MODE }}
           NSE_EQUITY_LIST_URL: ${{ secrets.NSE_EQUITY_LIST_URL }}
           NSE_NIFTY500_CSV_URL: ${{ secrets.NSE_NIFTY500_CSV_URL }}
