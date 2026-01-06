@@ -1,7 +1,12 @@
 name: Rootset: Canonical Universe Build
 
 on:
-  workflow_dispatch:
+  schedule:
+    # WHY: This job runs weekly on Sunday at midnight UTC. This frequency is
+    # sufficient for maintaining a fresh-enough universe without introducing
+    # the operational risk of a daily live fetch.
+    - cron: '0 0 * * 0'
+  workflow_dispatch: # Allows manual trigger for testing
 
 jobs:
   rootset-build:
