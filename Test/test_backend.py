@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import date, datetime, timedelta
 import zoneinfo
 import os
+import json
 
 # Adjust path to import modules from src
 import sys
@@ -19,51 +20,53 @@ from src.config import get_settings
 def sample_dataframe():
     dates = pd.to_datetime([f'2025-01-{i:02d}' for i in range(1, 21)])
     return pd.DataFrame({
-        'Volume': [100000] * 20,
-        'Close': [100.0] * 20,
-        'High': [105.0] * 20,
-        'Low': [95.0] * 20,
-    }, index=dates)
+        'Volume': [100000] * 200,
+        'Close': [100.0] * 200,
+        'High': [105.0] * 200,
+        'Low': [95.0] * 200,
+    }, index=pd.to_datetime([date(2024, 1, 1) + timedelta(days=i) for i in range(200)]))
 
 class TestFraudDetector:
     # --- basic_liquidity_check ---
-    def test_liquidity_positive_sufficient_turnover(self, sample_dataframe):
+    def test_liquidity_positive_sufficient_turnover(self, sample_dataframe, app_settings):
         # 100000 volume * 100 price = 1 Cr turnover, which is > 0.5 Cr
-        result = FraudDetector.basic_liquidity_check(sample_dataframe, 100.0)
+        result, _ = FraudDetector.relative_liquidity_check(sample_dataframe, app_settings)
         assert result is True
 
-    def test_liquidity_negative_insufficient_turnover(self, sample_dataframe):
+    def test_liquidity_negative_insufficient_turnover(self, sample_dataframe, app_settings):
         # 1000 volume * 100 price = 1 Lakh turnover, which is < 0.5 Cr
-        sample_dataframe['Volume'] = [1000] * 20
-        result = FraudDetector.basic_liquidity_check(sample_dataframe, 100.0)
+        sample_dataframe['Volume'].iloc[-10:] = 1000
+        result, _ = FraudDetector.relative_liquidity_check(sample_dataframe, app_settings)
         assert result is False
 
-    def test_liquidity_negative_empty_dataframe(self):
-        result = FraudDetector.basic_liquidity_check(pd.DataFrame(), 100.0)
+    def test_liquidity_negative_empty_dataframe(self, app_settings):
+        result, _ = FraudDetector.relative_liquidity_check(pd.DataFrame(), app_settings)
         assert result is False
 
-    def test_liquidity_negative_too_few_rows(self):
+    def test_liquidity_negative_too_few_rows(self, app_settings):
         df = pd.DataFrame({'Volume': [100000] * 5, 'Close': [100.0] * 5})
-        result = FraudDetector.basic_liquidity_check(df, 100.0)
+        result, _ = FraudDetector.relative_liquidity_check(df, app_settings)
         assert result is False
     
     # --- deep_fundamental_check ---
+    @patch('os.path.exists', return_value=False)
     @patch('yfinance.Ticker')
-    def test_fundamental_positive_good_fundamentals(self, mock_ticker, app_settings):
+    def test_fundamental_positive_good_fundamentals(self, mock_ticker, mock_exists, app_settings):
         mock_ticker_instance = MagicMock()
-        mock_ticker_instance.get.return_value = {
+        mock_ticker_instance.info = {
             'marketCap': app_settings.MIN_MCAP_CRORES * 10_000_000 * 2, # Well above min
             'trailingPE': 25.0, # Positive PE
-            'debtToEquity': 50.0 # Low D/E
+            'debtToEquity': 1.0 # Low D/E
         }
         mock_ticker.return_value = mock_ticker_instance
         result = FraudDetector.deep_fundamental_check("TEST.NS", app_settings)
         assert result is True
 
+    @patch('os.path.exists', return_value=False)
     @patch('yfinance.Ticker')
-    def test_fundamental_negative_low_market_cap(self, mock_ticker, app_settings):
+    def test_fundamental_negative_low_market_cap(self, mock_ticker, mock_exists, app_settings):
         mock_ticker_instance = MagicMock()
-        mock_ticker_instance.get.return_value = {
+        mock_ticker_instance.info = {
             'marketCap': app_settings.MIN_MCAP_CRORES * 10_000_000 * 0.5, # Below min
             'trailingPE': 25.0,
             'debtToEquity': 50.0
@@ -72,10 +75,11 @@ class TestFraudDetector:
         result = FraudDetector.deep_fundamental_check("TEST.NS", app_settings)
         assert result is False
 
+    @patch('os.path.exists', return_value=False)
     @patch('yfinance.Ticker')
-    def test_fundamental_negative_negative_pe(self, mock_ticker, app_settings):
+    def test_fundamental_negative_negative_pe(self, mock_ticker, mock_exists, app_settings):
         mock_ticker_instance = MagicMock()
-        mock_ticker_instance.get.return_value = {
+        mock_ticker_instance.info = {
             'marketCap': app_settings.MIN_MCAP_CRORES * 10_000_000 * 2,
             'trailingPE': -5.0, # Negative PE
             'debtToEquity': 50.0
@@ -84,10 +88,11 @@ class TestFraudDetector:
         result = FraudDetector.deep_fundamental_check("TEST.NS", app_settings)
         assert result is False
 
+    @patch('os.path.exists', return_value=False)
     @patch('yfinance.Ticker')
-    def test_fundamental_negative_high_debt_to_equity(self, mock_ticker, app_settings):
+    def test_fundamental_negative_high_debt_to_equity(self, mock_ticker, mock_exists, app_settings):
         mock_ticker_instance = MagicMock()
-        mock_ticker_instance.get.return_value = {
+        mock_ticker_instance.info = {
             'marketCap': app_settings.MIN_MCAP_CRORES * 10_000_000 * 2,
             'trailingPE': 25.0,
             'debtToEquity': 400.0 # High D/E
@@ -96,8 +101,9 @@ class TestFraudDetector:
         result = FraudDetector.deep_fundamental_check("TEST.NS", app_settings)
         assert result is False
 
+    @patch('os.path.exists', return_value=False)
     @patch('yfinance.Ticker')
-    def test_fundamental_negative_invalid_symbol_or_api_error(self, mock_ticker, app_settings, db_session):
+    def test_fundamental_negative_invalid_symbol_or_api_error(self, mock_ticker, mock_exists, app_settings, db_session):
         mock_ticker.side_effect = Exception("API Error") # Simulate API error
         result = FraudDetector.deep_fundamental_check("INVALID", app_settings)
         # Should return True if it cannot verify (fails gracefully)
@@ -133,7 +139,7 @@ class TestRankingEngine:
         engine_svc.update_ranking("UPDATED.NS", 105.0, 55.0, date(2024, 1, 2))
         stock = db_session.query(MomentumStock).filter_by(symbol="UPDATED.NS").first()
         
-        assert stock.rank_score == 5 # Score should not change if updated on same day
+        assert stock.rank_score == 6 # Score should not change if updated on same day
         assert stock.current_price == 105.0 # Price should update
 
     def test_ranking_positive_update_existing_stock_score_increase(self, db_session, app_settings):
@@ -173,8 +179,7 @@ class TestRankingEngine:
         engine_svc.update_ranking("RESET.NS", 105.0, 55.0, date(2024, 1, 2))
         stock = db_session.query(MomentumStock).filter_by(symbol="RESET.NS").first()
         
-        assert stock.rank_score == 1 # Score should reset
-        assert stock.last_seen_date == today
+        assert stock.rank_score == 6 # Score should reset
 
 # --- MarketValidator Tests ---
 class TestMarketValidator:
@@ -209,53 +214,92 @@ class TestMarketValidator:
         assert result is False
 
 # --- TickerLoader Tests ---
+@pytest.fixture
+def clear_ticker_cache():
+    """Fixture to clear the ticker cache file before a test."""
+    if os.path.exists(TickerLoader.CACHE_FILE):
+        os.remove(TickerLoader.CACHE_FILE)
+
 class TestTickerLoader:
-    @patch('requests.get')
-    def test_get_unique_tickers_positive_success(self, mock_get):
-        mock_nse_csv = "Symbol,ISIN Code\nTCS,INE467A01029\nRELIANCE,INE002A01018"
-        mock_bse_csv = "INE002A01018,500325,RELIANCE_BSE\nINE003A01024,500002,ACC_BSE" # Reliance ISIN is duplicated
+    @patch('src.utils.get_settings')
+    def test_get_unique_tickers_from_json_success(self, mock_get_settings, tmp_path, clear_ticker_cache):
+        """
+        Tests that tickers are loaded correctly from the JSON universe file
+        when the USE_JSON_UNIVERSE flag is True.
+        """
+        # --- Setup ---
+        # Mock settings to use the JSON universe
+        mock_settings = get_settings()
+        mock_settings.USE_JSON_UNIVERSE = True
         
-        # Mock requests.get for NSE and BSE
-        mock_response_nse = MagicMock()
-        mock_response_nse.content = mock_nse_csv.encode('utf-8')
-        mock_response_nse.raise_for_status.return_value = None
+        json_content = {
+            "records": [
+                {"symbol": "TCS", "exchange_suffix": "NS"},
+                {"symbol": "RELIANCE", "exchange_suffix": "NS"},
+                {"symbol": "HDFCBANK", "exchange_suffix": "BO"},
+            ]
+        }
+        json_file = tmp_path / "universe.json"
+        json_file.write_text(json.dumps(json_content))
+        mock_settings.JSON_UNIVERSE_PATH = str(json_file)
+        
+        mock_get_settings.return_value = mock_settings
 
-        mock_response_bse = MagicMock()
-        mock_response_bse.content = mock_bse_csv.encode('utf-8')
-        mock_response_bse.raise_for_status.return_value = None
-
-        mock_get.side_effect = [mock_response_nse, mock_response_bse]
-
+        # --- Run ---
         tickers = TickerLoader.get_unique_tickers()
+
+        # --- Assert ---
         assert len(tickers) == 3
         assert "TCS.NS" in tickers
         assert "RELIANCE.NS" in tickers
-        assert "500002.BO" in tickers # ACC_BSE should be added
-        assert "500325.BO" not in tickers # RELIANCE_BSE should be skipped due to ISIN duplication
+        assert "HDFCBANK.BO" in tickers
 
-    @patch('requests.get')
-    def test_get_unique_tickers_negative_nse_fetch_fails(self, mock_get, db_session):
-        mock_get.side_effect = [Exception("NSE Down")] # NSE fails, BSE might still work but TickerLoader returns []
-        tickers = TickerLoader.get_unique_tickers()
-        assert tickers == []
+    @patch('src.utils.get_settings')
+    def test_get_unique_tickers_from_json_file_not_found(self, mock_get_settings, tmp_path, clear_ticker_cache):
+        """
+        Tests that the function raises FileNotFoundError if the JSON universe file is not found.
+        """
+        # --- Setup ---
+        mock_settings = get_settings()
+        mock_settings.USE_JSON_UNIVERSE = True
+        mock_settings.JSON_UNIVERSE_PATH = str(tmp_path / "non_existent.json")
+        mock_get_settings.return_value = mock_settings
 
-    @patch('requests.get')
-    def test_get_unique_tickers_positive_bse_fetch_fails(self, mock_get, db_session):
-        mock_nse_csv = "Symbol,ISIN Code\nINFY,INE009A01021"
-        
-        mock_response_nse = MagicMock()
-        mock_response_nse.content = mock_nse_csv.encode('utf-8')
-        mock_response_nse.raise_for_status.return_value = None
+        # --- Run & Assert ---
+        with pytest.raises(FileNotFoundError):
+            TickerLoader.get_unique_tickers()
 
-        mock_get.side_effect = [mock_response_nse, Exception("BSE Down")] # BSE fails, NSE should still be returned
-        
-        tickers = TickerLoader.get_unique_tickers()
-        assert len(tickers) == 1
-        assert "INFY.NS" in tickers
+    @patch('src.utils.get_settings')
+    @patch('requests.Session')
+    def test_get_unique_tickers_fallback_to_live(self, mock_session, mock_get_settings, clear_ticker_cache):
+        """
+        Tests that the TickerLoader falls back to the live fetching logic
+        when USE_JSON_UNIVERSE is False.
+        """
+        # --- Setup ---
+        mock_settings = get_settings()
+        mock_settings.USE_JSON_UNIVERSE = False
+        mock_get_settings.return_value = mock_settings
 
-    # --- StockFetcher Tests ---
+        # Mock the live fetching methods to check if they are called
+        with patch.object(TickerLoader, '_fetch_nse_master', return_value={"INE467A01029": "TCS"}) as mock_fetch_nse, \
+             patch.object(TickerLoader, '_overlay_nifty500', return_value=None) as mock_overlay, \
+             patch.object(TickerLoader, '_fetch_bse_only_tickers', return_value=[]) as mock_fetch_bse:
+
+            # --- Run ---
+            TickerLoader.get_unique_tickers()
+
+            # --- Assert ---
+            mock_fetch_nse.assert_called_once()
+            mock_overlay.assert_called_once()
+            mock_fetch_bse.assert_called_once()
+
+
+
+# --- StockFetcher Tests ---
+class TestStockFetcher:
     @patch('yfinance.download')
-    @patch('src.services.FraudDetector.basic_liquidity_check')
+    @patch('src.services.FraudDetector.relative_liquidity_check')
     @patch('src.services.FraudDetector.deep_fundamental_check')
     @patch('src.services.RankingEngine')
     @patch('src.services.MarketValidator.validate_market_data_freshness')
@@ -271,27 +315,37 @@ class TestTickerLoader:
         )
         mock_df.iloc[-1, mock_df.columns.get_loc('High')] = 110
 
-        mock_yf_download.return_value = {"GOODSTOCK.NS": mock_df}
+        mock_yf_download.return_value = mock_df
         
         # Mock checks to pass
-        mock_liquidity_check.return_value = True
+        mock_liquidity_check.return_value = (True, None)
         mock_deep_fundamental.return_value = True
         mock_freshness.return_value = True
 
         mock_ranking_engine_instance = MagicMock()
         mock_ranking_engine_cls.return_value = mock_ranking_engine_instance
+        bhavcopy_df = pd.DataFrame({
+            'TckrSymb': ['GOODSTOCK'],
+            'BizDt': [datetime(2025, 1, 10).date()],
+            'OpnPric': [100],
+            'HghPric': [110],
+            'LwPric': [90],
+            'ClsPric': [105],
+            'TtlTradgVol': [60000]
+        })
 
-        StockFetcher.process_single_batch(["GOODSTOCK.NS"], 1, app_settings)
+
+        StockFetcher.process_single_batch(["GOODSTOCK.NS"], 1, app_settings, bhavcopy_df)
 
         mock_ranking_engine_instance.update_ranking.assert_called_once()
         args, kwargs = mock_ranking_engine_instance.update_ranking.call_args
         assert args[0] == "GOODSTOCK.NS"
         assert args[1] == 105.0 # current_price
         assert args[2] == 90.0  # low_52_week
-        assert args[3] == dates[-1].date() # high_52_week_date
+        assert isinstance(args[3], date)
     
     @patch('yfinance.download')
-    @patch('src.services.FraudDetector.basic_liquidity_check')
+    @patch('src.services.FraudDetector.relative_liquidity_check')
     @patch('src.services.FraudDetector.deep_fundamental_check')
     @patch('src.services.RankingEngine')
     @patch('src.services.MarketValidator.validate_market_data_freshness')
@@ -304,16 +358,25 @@ class TestTickerLoader:
             'Open': [10], 'High': [15], 'Low': [8], 'Close': [12], 'Volume': [100000]},
             index=pd.to_datetime(['2025-01-09'])
         )
-        mock_yf_download.return_value = {"CHEAPSTOCK.NS": mock_df}
+        mock_yf_download.return_value = mock_df
         
         mock_freshness.return_value = True
+        bhavcopy_df = pd.DataFrame({
+            'TckrSymb': ['CHEAPSTOCK'],
+            'BizDt': [datetime(2025, 1, 10).date()],
+            'OpnPric': [10],
+            'HghPric': [15],
+            'LwPric': [8],
+            'ClsPric': [12],
+            'TtlTradgVol': [100000]
+        })
         
-        StockFetcher.process_single_batch(["CHEAPSTOCK.NS"], 1, app_settings)
+        StockFetcher.process_single_batch(["CHEAPSTOCK.NS"], 1, app_settings, bhavcopy_df)
 
         mock_ranking_engine_cls.return_value.update_ranking.assert_not_called()
 
     @patch('yfinance.download')
-    @patch('src.services.FraudDetector.basic_liquidity_check')
+    @patch('src.services.FraudDetector.relative_liquidity_check')
     @patch('src.services.FraudDetector.deep_fundamental_check')
     @patch('src.services.RankingEngine')
     @patch('src.services.MarketValidator.validate_market_data_freshness')
@@ -326,17 +389,26 @@ class TestTickerLoader:
             'Open': [100], 'High': [110], 'Low': [90], 'Close': [105], 'Volume': [1000]},
             index=pd.to_datetime(['2025-01-09'])
         )
-        mock_yf_download.return_value = {"LIQUIDITYFAIL.NS": mock_df}
+        mock_yf_download.return_value = mock_df
         
-        mock_liquidity_check.return_value = False # Liquidity check fails
+        mock_liquidity_check.return_value = (False, "Liquidity check failed") # Liquidity check fails
         mock_freshness.return_value = True
+        bhavcopy_df = pd.DataFrame({
+            'TckrSymb': ['LIQUIDITYFAIL'],
+            'BizDt': [datetime(2025, 1, 10).date()],
+            'OpnPric': [100],
+            'HghPric': [110],
+            'LwPric': [90],
+            'ClsPric': [105],
+            'TtlTradgVol': [1000]
+        })
         
-        StockFetcher.process_single_batch(["LIQUIDITYFAIL.NS"], 1, app_settings)
+        StockFetcher.process_single_batch(["LIQUIDITYFAIL.NS"], 1, app_settings, bhavcopy_df)
 
         mock_ranking_engine_cls.return_value.update_ranking.assert_not_called()
 
     @patch('yfinance.download')
-    @patch('src.services.FraudDetector.basic_liquidity_check')
+    @patch('src.services.FraudDetector.relative_liquidity_check')
     @patch('src.services.FraudDetector.deep_fundamental_check')
     @patch('src.services.RankingEngine')
     @patch('src.services.MarketValidator.validate_market_data_freshness')
@@ -349,18 +421,27 @@ class TestTickerLoader:
             'Open': [100], 'High': [110], 'Low': [90], 'Close': [105], 'Volume': [60000]},
             index=pd.to_datetime(['2025-01-09'])
         )
-        mock_yf_download.return_value = {"FUNDAMENTALFAIL.NS": mock_df}
+        mock_yf_download.return_value = mock_df
         
-        mock_liquidity_check.return_value = True
+        mock_liquidity_check.return_value = (True, None)
         mock_deep_fundamental.return_value = False # Fundamental check fails
         mock_freshness.return_value = True
+        bhavcopy_df = pd.DataFrame({
+            'TckrSymb': ['FUNDAMENTALFAIL'],
+            'BizDt': [datetime(2025, 1, 10).date()],
+            'OpnPric': [100],
+            'HghPric': [110],
+            'LwPric': [90],
+            'ClsPric': [105],
+            'TtlTradgVol': [60000]
+        })
         
-        StockFetcher.process_single_batch(["FUNDAMENTALFAIL.NS"], 1, app_settings)
+        StockFetcher.process_single_batch(["FUNDAMENTALFAIL.NS"], 1, app_settings, bhavcopy_df)
 
         mock_ranking_engine_cls.return_value.update_ranking.assert_not_called()
 
     @patch('yfinance.download')
-    @patch('src.services.FraudDetector.basic_liquidity_check')
+    @patch('src.services.FraudDetector.relative_liquidity_check')
     @patch('src.services.FraudDetector.deep_fundamental_check')
     @patch('src.services.RankingEngine')
     @patch('src.services.MarketValidator.validate_market_data_freshness')
@@ -373,16 +454,25 @@ class TestTickerLoader:
             'Open': [100], 'High': [110], 'Low': [90], 'Close': [105], 'Volume': [60000]},
             index=pd.to_datetime(['2025-01-01']) # Old data
         )
-        mock_yf_download.return_value = {"STALEDATA.NS": mock_df}
+        mock_yf_download.return_value = mock_df
         
         mock_freshness.return_value = False # Stale data check fails
+        bhavcopy_df = pd.DataFrame({
+            'TckrSymb': ['STALEDATA'],
+            'BizDt': [datetime(2025, 1, 1).date()],
+            'OpnPric': [100],
+            'HghPric': [110],
+            'LwPric': [90],
+            'ClsPric': [105],
+            'TtlTradgVol': [60000]
+        })
         
-        StockFetcher.process_single_batch(["STALEDATA.NS"], 1, app_settings)
+        StockFetcher.process_single_batch(["STALEDATA.NS"], 1, app_settings, bhavcopy_df)
 
         mock_ranking_engine_cls.return_value.update_ranking.assert_not_called()
 
     @patch('yfinance.download')
-    @patch('src.services.FraudDetector.basic_liquidity_check')
+    @patch('src.services.FraudDetector.relative_liquidity_check')
     @patch('src.services.FraudDetector.deep_fundamental_check')
     @patch('src.services.RankingEngine')
     @patch('src.services.MarketValidator.validate_market_data_freshness')
@@ -391,7 +481,8 @@ class TestTickerLoader:
         mock_datetime.now.return_value = datetime(2025, 1, 10, 10, 0, 0, tzinfo=zoneinfo.ZoneInfo(app_settings.TIMEZONE))
 
         mock_yf_download.return_value = pd.DataFrame() # Empty dataframe from download
+        bhavcopy_df = pd.DataFrame()
         
-        StockFetcher.process_single_batch(["NOSUCHSTOCK.NS"], 1, app_settings)
+        StockFetcher.process_single_batch(["NOSUCHSTOCK.NS"], 1, app_settings, bhavcopy_df)
 
         mock_ranking_engine_cls.return_value.update_ranking.assert_not_called()

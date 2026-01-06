@@ -1,0 +1,54 @@
+# This workflow defines a weekly job that builds the master stock universe.
+# It is designed to run on a schedule, separate from the daily scanner,
+# to create a stable and versioned reference data set.
+name: Weekly Master Universe Build
+
+on:
+  schedule:
+    # WHY: This job runs weekly on Sunday at midnight UTC. This frequency is
+    # sufficient for maintaining a fresh-enough universe without introducing
+    # the operational risk of a daily live fetch.
+    - cron: '0 0 * * 0'
+  workflow_dispatch: # Allows manual trigger for testing
+
+jobs:
+  build-master-universe:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the repository's code
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up the Python environment
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      # Step 3: Install the required Python packages
+      - name: Install Dependencies
+        working-directory: Backend
+        run: |
+          pip install -r requirements.txt
+
+      # Step 4: Run the master data builder script
+      # This script fetches data from multiple sources and creates the JSON universe file.
+      - name: Run Master Data Builder
+        working-directory: Backend
+        run: |
+          python -m src.master_builder
+
+      # Step 5: Commit and push the generated JSON files to the repository.
+      # WHY: Committing the generated data to the repository makes the daily
+      # scan deterministic and reproducible. It ensures that the daily job
+      # always runs against a known, version-controlled universe.
+      - name: Commit and Push Changes
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "chore: weekly master universe build"
+          branch: main
+          file_pattern: data/master/*.json
+          commit_user_name: "GitHub Actions"
+          commit_user_email: "actions@github.com"
+          commit_author: "GitHub Actions <actions@github.com>"
