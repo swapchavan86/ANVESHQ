@@ -153,11 +153,16 @@ class RankingEngine:
     def update_ranking(self, symbol: str, price: float, low_52: float, high_date: datetime.date):
         stmt = select(MomentumStock).where(MomentumStock.symbol == symbol)
         stock = self.session.execute(stmt).scalar_one_or_none()
+        
         if not stock:
             stock = MomentumStock(symbol=symbol, rank_score=0, last_seen_date=self.today)
             self.session.add(stock)
             logger.info(f"NEW STOCK: {symbol} created with initial rank 0.")
-        stock.rank_score = min((stock.rank_score or 0) + 1, self.settings.MAX_RANK)
+        
+        # Only increment rank if the stock has not been seen today
+        if stock.last_seen_date < self.today:
+            stock.rank_score = min((stock.rank_score or 0) + 1, self.settings.MAX_RANK)
+        
         stock.current_price = price
         stock.low_52_week = low_52
         stock.high_52_week_date = high_date
