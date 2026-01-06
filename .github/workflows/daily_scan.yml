@@ -1,10 +1,7 @@
 name: Fluxmind: Daily Intelligence Engine
 
 on:
-  schedule:
-    # Runs at 12:30 UTC every day (6:00 PM IST)
-    - cron: '30 12 * * *'
-  workflow_dispatch: # Allows manual trigger for testing
+  workflow_dispatch:
 
 jobs:
   fluxmind-run:
