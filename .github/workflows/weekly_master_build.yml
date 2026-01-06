@@ -1,3 +1,6 @@
+# This workflow defines a weekly job that builds the Rootset, the canonical stock universe.
+# It is designed to run on a schedule, separate from the daily Fluxmind engine,
+# to create a stable and versioned reference data set.
 name: Rootset: Canonical Universe Build
 
 on:
@@ -13,6 +16,58 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Step 1: Check out the repository's code
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      # Step 2: Set up the Python environment
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      # Step 3: Install the required Python packages
+      - name: Install Dependencies
+        working-directory: Backend
+        run: |
+          pip install -r requirements.txt
+
+      # Step 4: Run the Rootset builder script
+      # This script fetches data from multiple sources and creates the JSON universe file.
+      - name: Run Rootset Builder
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+          MODE: ${{ secrets.MODE }}
+          NSE_EQUITY_LIST_URL: ${{ secrets.NSE_EQUITY_LIST_URL }}
+          NSE_NIFTY500_CSV_URL: ${{ secrets.NSE_NIFTY500_CSV_URL }}
+          BSE_CM_CSV_URL: ${{ secrets.BSE_CM_CSV_URL }}
+          BHAVCOPY_URL_TEMPLATE: ${{ secrets.BHAVCOPY_URL_TEMPLATE }}
+          FUNDAMENTAL_CHECK_ENABLED: ${{ secrets.FUNDAMENTAL_CHECK_ENABLED }}
+          MIN_PRICE: ${{ secrets.MIN_PRICE }}
+          MIN_MCAP_CRORES: ${{ secrets.MIN_MCAP_CRORES }}
+          STREAK_THRESHOLD_DAYS: ${{ secrets.STREAK_THRESHOLD_DAYS }}
+          NEAR_52_WEEK_HIGH_THRESHOLD: ${{ secrets.NEAR_52_WEEK_HIGH_THRESHOLD }}
+          VOLUME_CONFIRMATION_FACTOR: ${{ secrets.VOLUME_CONFIRMATION_FACTOR }}
+          RELATIVE_LIQUIDITY_FACTOR: ${{ secrets.RELATIVE_LIQUIDITY_FACTOR }}
+          MAX_RANK: ${{ secrets.MAX_RANK }}
+          DECAY_FACTOR: ${{ secrets.DECAY_FACTOR }}
+        working-directory: Backend
+        run: |
+          python -m src.master_builder
+
+      # Step 5: Commit and push the generated JSON files to the repository.
+      # WHY: Committing the generated data to the repository makes the daily
+      # scan deterministic and reproducible. It ensures that the daily job
+      # always runs against a known, version-controlled universe.
+      - name: Commit and Push Changes
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "chore: weekly Rootset universe build"
+          branch: main
+          file_pattern: data/master/*.json
+          commit_user_name: "GitHub Actions"
+          commit_user_email: "actions@github.com"
+          commit_author: "GitHub Actions <actions@github.com>"
+
 
