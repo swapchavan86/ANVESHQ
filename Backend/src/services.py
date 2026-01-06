@@ -17,7 +17,7 @@ import threading
 import json
 import os
 
-logger = logging.getLogger("MomentumService")
+logger = logging.getLogger("Nexara")
 logger.setLevel(logging.INFO)
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 
@@ -322,7 +322,7 @@ class StockFetcher:
                 engine_svc.decay_unseen_ranks(all_qualified_symbols)
         else:
             logger.warning("No stocks qualified in this run. Skipping rank decay.")
-        logger.info("Parallel Scan Complete.")
+        logger.info("Fluxmind scan complete.")
 
 # --- CLASS 4: VALIDATOR ---
 class MarketValidator:

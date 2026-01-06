@@ -1,7 +1,7 @@
-# This workflow defines a weekly job that builds the master stock universe.
-# It is designed to run on a schedule, separate from the daily scanner,
+# This workflow defines a weekly job that builds the Rootset, the canonical stock universe.
+# It is designed to run on a schedule, separate from the daily Fluxmind engine,
 # to create a stable and versioned reference data set.
-name: Weekly Master Universe Build
+name: Rootset: Canonical Universe Build
 
 on:
   schedule:
@@ -12,7 +12,7 @@ on:
   workflow_dispatch: # Allows manual trigger for testing
 
 jobs:
-  build-master-universe:
+  rootset-build:
     runs-on: ubuntu-latest
 
     steps:
@@ -32,9 +32,9 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      # Step 4: Run the master data builder script
+      # Step 4: Run the Rootset builder script
       # This script fetches data from multiple sources and creates the JSON universe file.
-      - name: Run Master Data Builder
+      - name: Run Rootset Builder
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
@@ -63,7 +63,7 @@ jobs:
       - name: Commit and Push Changes
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
-          commit_message: "chore: weekly master universe build"
+          commit_message: "chore: weekly Rootset universe build"
           branch: main
           file_pattern: data/master/*.json
           commit_user_name: "GitHub Actions"
