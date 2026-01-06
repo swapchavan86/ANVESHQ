@@ -180,7 +180,7 @@ class RankingEngine:
             self.session.rollback()
             logger.error(f"Error during rank decay process: {e}")
             with get_db_context() as session:
-                ErrorLogger.log_error(session, f"Rank Decay Error: {e}")
+                ErrorLogger.log_error(session, "Rank Decay Error", details={"error": str(e)})
 
 # --- CLASS 3: PARALLEL FETCHER ---
 class StockFetcher:
@@ -256,20 +256,27 @@ class StockFetcher:
                         high_date = high_date_idx.date() if isinstance(high_date_idx, pd.Timestamp) else high_date_idx
                         engine_svc.update_ranking(symbol, current_close, float(df['Low'].min()), high_date)
                         qualified_symbols.add(symbol)
-                    except Exception as e:
-                        logger.error(f"Error processing {symbol}: {type(e).__name__} - {e}", exc_info=True)
-                        with get_db_context() as error_session:
-                            ErrorLogger.log_error(error_session, f"Processing Error for {symbol}: {type(e).__name__} - {e}")
-                        continue
-                session.commit()
-                logger.info(f"--- Finished Batch {batch_id}, Committing {len(qualified_symbols)} updates ---")
-            except Exception as e:
-                logger.error(f"--- Batch {batch_id} failed, rolling back ---", exc_info=True)
-                session.rollback()
-                with get_db_context() as error_session:
-                    ErrorLogger.log_error(error_session, f"Batch Processing Error in batch {batch_id}: {type(e).__name__} - {e}")
-        return qualified_symbols
-
+                                    except Exception as e:
+                                        logger.error(f"Error processing {symbol}: {type(e).__name__} - {e}", exc_info=True)
+                                        with get_db_context() as error_session:
+                                            ErrorLogger.log_error(
+                                                error_session, 
+                                                f"Processing Error: {type(e).__name__}", 
+                                                details={"symbol": symbol, "batch_id": batch_id, "error": str(e)}
+                                            )
+                                        continue
+                                session.commit()
+                                logger.info(f"--- Finished Batch {batch_id}, Committing {len(qualified_symbols)} updates ---")
+                            except Exception as e:
+                                logger.error(f"--- Batch {batch_id} failed, rolling back ---", exc_info=True)
+                                session.rollback()
+                                with get_db_context() as error_session:
+                                    ErrorLogger.log_error(
+                                        error_session, 
+                                        f"Batch Processing Error: {type(e).__name__}", 
+                                        details={"batch_id": batch_id, "error": str(e)}
+                                    )
+                            return qualified_symbols
     @staticmethod
     def scan_stocks_parallel(tickers: list[str], batch_size: int = 100, max_workers: int = 10):
         
@@ -339,11 +346,15 @@ class ErrorLogger:
         return ''.join(secrets.choice(alphabet) for i in range(length))
 
     @staticmethod
-    def log_error(session: Session, error_message: str):
+    def log_error(session: Session, error_message: str, details: dict = None):
         stmt = select(Error).where(Error.error_message == error_message)
         exists = session.execute(stmt).first()
         if not exists:
             error_code = ErrorLogger.generate_error_code()
-            new_error = Error(error_code=error_code, error_message=error_message)
+            new_error = Error(
+                error_code=error_code, 
+                error_message=error_message,
+                error_details=details
+            )
             session.add(new_error)
             session.commit()
