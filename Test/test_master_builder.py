@@ -3,7 +3,7 @@ import json
 import pytest
 import requests
 from unittest.mock import patch, MagicMock
-from src.master_builder import master_data_builder, DATA_DIR, SNAPSHOT_FILENAME_TEMPLATE, LATEST_FILENAME
+from src.master_builder import rootset_builder, DATA_DIR, SNAPSHOT_FILENAME_TEMPLATE, LATEST_FILENAME
 import pandas as pd
 from io import StringIO
 from datetime import datetime
@@ -41,34 +41,35 @@ def cleanup_files():
             os.remove(os.path.join(DATA_DIR, item))
 
 
+class MockResponse:
+    def __init__(self, text, status_code):
+        self.text = text
+        self.status_code = status_code
+
+    def raise_for_status(self):
+        print(f"MockResponse status_code: {self.status_code}")
+        if self.status_code >= 400:
+            raise requests.exceptions.HTTPError()
+
 @patch('requests.get')
-def test_master_data_builder_success(mock_get):
+def test_rootset_builder_success(mock_get):
     """
-    Tests the successful execution of the master_data_builder function,
+    Tests the successful execution of the rootset_builder function,
     ensuring it fetches data from all tiers, processes it, and creates the
     correct JSON output files.
     """
     # --- Mock API responses ---
-    mock_nse_response = MagicMock()
-    mock_nse_response.status_code = 200
-    mock_nse_response.text = NSE_EQUITY_MASTER_CSV
-    
-    mock_nifty_response = MagicMock()
-    mock_nifty_response.status_code = 200
-    mock_nifty_response.text = NIFTY_500_CSV
-
-    # Configure the side_effect to return different responses based on URL
     def get_side_effect(url, headers):
-        if "EQUITY_L.csv" in url:
-            return mock_nse_response
-        elif "ind_nifty500list.csv" in url:
-            return mock_nifty_response
-        return MagicMock(status_code=404)
+        if "http://test.com/equity.csv" == url:
+            return MockResponse(NSE_EQUITY_MASTER_CSV, 200)
+        elif "http://test.com/nifty500.csv" == url:
+            return MockResponse(NIFTY_500_CSV, 200)
+        return MockResponse(None, 404)
 
     mock_get.side_effect = get_side_effect
 
     # --- Run the function ---
-    master_data_builder()
+    rootset_builder()
 
     # --- Assertions ---
     snapshot_date = datetime.now().strftime("%Y-%m-%d")
@@ -99,7 +100,7 @@ def test_master_data_builder_success(mock_get):
     assert symbols['WIPRO'] == 'TIER_2'
     
 @patch('requests.get')
-def test_master_data_builder_nse_failure(mock_get):
+def test_rootset_builder_nse_failure(mock_get):
     """
     Tests that the job aborts gracefully if the Tier 1 (NSE Master)
     fetch fails.
@@ -108,34 +109,30 @@ def test_master_data_builder_nse_failure(mock_get):
     mock_get.side_effect = requests.exceptions.RequestException("Connection Error")
 
     # --- Run the function ---
-    master_data_builder()
+    rootset_builder()
 
     # --- Assertions ---
     # No files should be created if the mandatory Tier 1 source fails
     assert not os.listdir(DATA_DIR)
 
 @patch('requests.get')
-def test_master_data_builder_nifty500_failure(mock_get):
+def test_rootset_builder_nifty500_failure(mock_get):
     """
     Tests that the job continues execution and generates a file
     even if the Tier 2 (Nifty 500) fetch fails.
     """
     # --- Mock successful NSE response and failed Nifty 500 response ---
-    mock_nse_response = MagicMock()
-    mock_nse_response.status_code = 200
-    mock_nse_response.text = NSE_EQUITY_MASTER_CSV
-    
     def get_side_effect(url, headers):
-        if "EQUITY_L.csv" in url:
-            return mock_nse_response
-        elif "ind_nifty500list.csv" in url:
+        if "http://test.com/equity.csv" == url:
+            return MockResponse(NSE_EQUITY_MASTER_CSV, 200)
+        elif "http://test.com/nifty500.csv" == url:
             raise requests.exceptions.RequestException("Not Found")
-        return MagicMock(status_code=404)
+        return MockResponse(None, 404)
 
     mock_get.side_effect = get_side_effect
     
     # --- Run the function ---
-    master_data_builder()
+    rootset_builder()
     
     # --- Assertions ---
     latest_filepath = os.path.join(DATA_DIR, LATEST_FILENAME)

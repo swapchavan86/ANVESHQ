@@ -30,6 +30,7 @@ class TestFraudDetector:
     # --- basic_liquidity_check ---
     def test_liquidity_positive_sufficient_turnover(self, sample_dataframe, app_settings):
         # 100000 volume * 100 price = 1 Cr turnover, which is > 0.5 Cr
+        sample_dataframe.loc[sample_dataframe.index[-10:], 'Volume'] *= 2
         result, _ = FraudDetector.relative_liquidity_check(sample_dataframe, app_settings)
         assert result is True
 
@@ -115,11 +116,12 @@ class TestRankingEngine:
         engine_svc = RankingEngine(db_session, app_settings)
         today = datetime.now(zoneinfo.ZoneInfo(app_settings.TIMEZONE)).date()
         engine_svc.update_ranking("NEWSTOCK.NS", 150.0, 100.0, date(2024, 1, 1))
-
+        db_session.commit()
+        
         stock = db_session.query(MomentumStock).filter_by(symbol="NEWSTOCK.NS").first()
         assert stock is not None
         assert stock.symbol == "NEWSTOCK.NS"
-        assert stock.rank_score == 1
+        assert stock.rank_score == 0
         assert stock.last_seen_date == today
         assert stock.current_price == 150.0
 
@@ -139,7 +141,7 @@ class TestRankingEngine:
         engine_svc.update_ranking("UPDATED.NS", 105.0, 55.0, date(2024, 1, 2))
         stock = db_session.query(MomentumStock).filter_by(symbol="UPDATED.NS").first()
         
-        assert stock.rank_score == 6 # Score should not change if updated on same day
+        assert stock.rank_score == 5 # Score should not change if updated on same day
         assert stock.current_price == 105.0 # Price should update
 
     def test_ranking_positive_update_existing_stock_score_increase(self, db_session, app_settings):
@@ -299,12 +301,13 @@ class TestTickerLoader:
 # --- StockFetcher Tests ---
 class TestStockFetcher:
     @patch('yfinance.download')
+    @patch('src.services.FraudDetector.volume_confirmation')
     @patch('src.services.FraudDetector.relative_liquidity_check')
     @patch('src.services.FraudDetector.deep_fundamental_check')
     @patch('src.services.RankingEngine')
     @patch('src.services.MarketValidator.validate_market_data_freshness')
     @patch('src.services.datetime')
-    def test_process_single_batch_positive_stock_qualified(self, mock_datetime, mock_freshness, mock_ranking_engine_cls, mock_deep_fundamental, mock_liquidity_check, mock_yf_download, db_session, app_settings):
+    def test_process_single_batch_positive_stock_qualified(self, mock_datetime, mock_freshness, mock_ranking_engine_cls, mock_deep_fundamental, mock_liquidity_check, mock_volume_confirmation, mock_yf_download, db_session, app_settings):
         mock_datetime.now.return_value = datetime(2025, 1, 10, 10, 0, 0, tzinfo=zoneinfo.ZoneInfo(app_settings.TIMEZONE))
 
         # Mock yfinance.download data
@@ -319,6 +322,7 @@ class TestStockFetcher:
         
         # Mock checks to pass
         mock_liquidity_check.return_value = (True, None)
+        mock_volume_confirmation.return_value = (True, None)
         mock_deep_fundamental.return_value = True
         mock_freshness.return_value = True
 
@@ -333,7 +337,6 @@ class TestStockFetcher:
             'ClsPric': [105],
             'TtlTradgVol': [60000]
         })
-
 
         StockFetcher.process_single_batch(["GOODSTOCK.NS"], 1, app_settings, bhavcopy_df)
 

@@ -64,13 +64,13 @@ def rootset_builder():
         nse_master_df = pd.read_csv(StringIO(response.text))
         # Clean up column names and filter for 'EQ' series only.
         nse_master_df.columns = nse_master_df.columns.str.strip()
-        nse_master_df = nse_master_df[nse_master_df['SERIES'] == 'EQ']
+        nse_master_df_filtered = nse_master_df[nse_master_df['SERIES'] == 'EQ'].copy()
         # Standardize column names and add metadata.
-        nse_master_df.rename(columns={'ISIN NUMBER': 'isin', 'SYMBOL': 'symbol'}, inplace=True)
-        nse_master_df['exchange'] = 'NSE'
-        nse_master_df['exchange_suffix'] = 'NS'
-        nse_master_df['tier'] = 'TIER_1'
-        nse_master_df = nse_master_df[['isin', 'symbol', 'exchange', 'exchange_suffix', 'tier']]
+        nse_master_df_filtered.rename(columns={'ISIN NUMBER': 'isin', 'SYMBOL': 'symbol'}, inplace=True)
+        nse_master_df_filtered['exchange'] = 'NSE'
+        nse_master_df_filtered['exchange_suffix'] = 'NS'
+        nse_master_df_filtered['tier'] = 'TIER_1'
+        nse_master_df = nse_master_df_filtered[['isin', 'symbol', 'exchange', 'exchange_suffix', 'tier']]
         logging.info(f"Successfully fetched and processed {len(nse_master_df)} Tier 1 records.")
     except requests.exceptions.RequestException as e:
         logging.error(f"Failed to fetch NSE Equity Master: {e}")
