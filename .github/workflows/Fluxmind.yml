@@ -1,0 +1,47 @@
+name: Fluxmind: Daily Intelligence Engine
+
+on:
+  schedule:
+    # Runs at 12:30 UTC every day (6:00 PM IST)
+    - cron: '30 12 * * *'
+  workflow_dispatch: # Allows manual trigger for testing
+
+jobs:
+  fluxmind-run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        working-directory: Backend
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Fluxmind Engine
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+          MODE: ${{ secrets.MODE }}
+          NSE_EQUITY_LIST_URL: ${{ secrets.NSE_EQUITY_LIST_URL }}
+          NSE_NIFTY500_CSV_URL: ${{ secrets.NSE_NIFTY500_CSV_URL }}
+          BSE_CM_CSV_URL: ${{ secrets.BSE_CM_CSV_URL }}
+          BHAVCOPY_URL_TEMPLATE: ${{ secrets.BHAVCOPY_URL_TEMPLATE }}
+          FUNDAMENTAL_CHECK_ENABLED: ${{ secrets.FUNDAMENTAL_CHECK_ENABLED }}
+          MIN_PRICE: ${{ secrets.MIN_PRICE }}
+          MIN_MCAP_CRORES: ${{ secrets.MIN_MCAP_CRORES }}
+          STREAK_THRESHOLD_DAYS: ${{ secrets.STREAK_THRESHOLD_DAYS }}
+          NEAR_52_WEEK_HIGH_THRESHOLD: ${{ secrets.NEAR_52_WEEK_HIGH_THRESHOLD }}
+          VOLUME_CONFIRMATION_FACTOR: ${{ secrets.VOLUME_CONFIRMATION_FACTOR }}
+          RELATIVE_LIQUIDITY_FACTOR: ${{ secrets.RELATIVE_LIQUIDITY_FACTOR }}
+          MAX_RANK: ${{ secrets.MAX_RANK }}
+          DECAY_FACTOR: ${{ secrets.DECAY_FACTOR }}
+        working-directory: Backend
+        run: |
+          python -m src.main
