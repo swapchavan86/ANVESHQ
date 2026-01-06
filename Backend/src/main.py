@@ -14,11 +14,11 @@ from src.utils import TickerLoader
 
 logging.basicConfig(
     level=getattr(logging, get_settings().LOG_LEVEL, logging.INFO),
-    format="%(asctime)s [%(levelname)s] %(message)s",
+    format="[NEXARA:FLUXMIND] [%(levelname)s] %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
-logger = logging.getLogger("MomentumService")
+logger = logging.getLogger("Nexara")
 
 def populate_known_errors():
     known_errors = [
@@ -35,7 +35,7 @@ def bootstrap_db():
     populate_known_errors()
 
 def main():
-    logger.info("--- Starting Real-Time Momentum Scanner (Parallel) ---")
+    logger.info("--- Starting Fluxmind Engine ---")
     
     current_settings = get_settings()
     logger.info(f"--- Running in {current_settings.MODE} mode ---")
@@ -56,11 +56,9 @@ def main():
         sys.exit(1)
 
     # 2. Start Parallel Scanning
-    # 11,000 stocks / 50 batch size = 220 batches.
-    # 10 workers running concurrently = very fast.
     StockFetcher.scan_stocks_parallel(tickers, batch_size=50, max_workers=10)
             
-    logger.info("--- Job Completed Successfully ---")
+    logger.info("--- Fluxmind Engine Run Completed Successfully ---")
     os._exit(0)
 
 if __name__ == "__main__":

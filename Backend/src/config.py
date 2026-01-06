@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     # --- Application Metadata ---
-    APP_NAME: str = "MomentumScanner"
+    APP_NAME: str = "Nexara"
     TIMEZONE: str = "Asia/Kolkata"
     
     # --- Universe Source URLs ---
