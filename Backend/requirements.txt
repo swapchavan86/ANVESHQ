@@ -7,3 +7,9 @@ pandas
 python-dotenv
 requests
 pytest
+fastapi
+uvicorn
+python-multipart
+nsetools
+beautifulsoup4
+lxml

@@ -29,7 +29,9 @@ class MomentumStock(Base):
     
     # Financial Data
     current_price: Mapped[float] = mapped_column(Float, nullable=True)
-    low_52_week: Mapped[float] = mapped_column(Float, nullable=True)
+    low_52_week: Mapped[float] = mapped_column(Float, nullable=True) # This is 52-week low price
+    low_52_week_date: Mapped[Date] = mapped_column(Date, nullable=True)
+    high_52_week_price: Mapped[float] = mapped_column(Float, nullable=True)
     high_52_week_date: Mapped[Date] = mapped_column(Date, nullable=True)
     
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

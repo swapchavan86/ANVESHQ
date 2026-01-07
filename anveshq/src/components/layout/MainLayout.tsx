@@ -12,7 +12,6 @@ export const MainLayout = ({ children }: { children: React.ReactNode }) => {
               ANVESHQ<span className="text-accent-success">.</span>
             </Link>
             <nav className="hidden md:flex items-center space-x-1">
-              <NavItem href="/dashboard" label="Dashboard" />
               <NavItem href="/market" label="Market Overview" />
               <NavItem href="/watchlist" label="Watchlist" />
             </nav>

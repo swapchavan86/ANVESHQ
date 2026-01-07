@@ -115,7 +115,12 @@ class TestRankingEngine:
     def test_ranking_positive_add_new_stock(self, db_session, app_settings):
         engine_svc = RankingEngine(db_session, app_settings)
         today = datetime.now(zoneinfo.ZoneInfo(app_settings.TIMEZONE)).date()
-        engine_svc.update_ranking("NEWSTOCK.NS", 150.0, 100.0, date(2024, 1, 1))
+        
+        # New dummy values for testing
+        test_low_52_date = date(2024, 1, 10)
+        test_high_52_price = 160.0
+        
+        engine_svc.update_ranking("NEWSTOCK.NS", 150.0, 100.0, test_low_52_date, test_high_52_price, date(2024, 1, 1))
         db_session.commit()
         
         stock = db_session.query(MomentumStock).filter_by(symbol="NEWSTOCK.NS").first()
@@ -124,64 +129,101 @@ class TestRankingEngine:
         assert stock.rank_score == 0
         assert stock.last_seen_date == today
         assert stock.current_price == 150.0
+        assert stock.low_52_week == 100.0
+        assert stock.low_52_week_date == test_low_52_date
+        assert stock.high_52_week_price == test_high_52_price
+        assert stock.high_52_week_date == date(2024, 1, 1)
 
     def test_ranking_positive_update_existing_stock_same_day(self, db_session, app_settings):
         engine_svc = RankingEngine(db_session, app_settings)
         today = datetime.now(zoneinfo.ZoneInfo(app_settings.TIMEZONE)).date()
         
-        # Add initial stock
+        # New dummy values for testing
+        test_low_52_date = date(2024, 1, 10)
+        test_high_52_price = 160.0
+        
+        # Add initial stock with all new fields
         initial_stock = MomentumStock(
             symbol="UPDATED.NS", rank_score=5, last_seen_date=today,
-            current_price=100.0, low_52_week=50.0, high_52_week_date=date(2024, 1, 1)
+            current_price=100.0, low_52_week=50.0, low_52_week_date=date(2023, 12, 1),
+            high_52_week_price=120.0, high_52_week_date=date(2024, 1, 1)
         )
         db_session.add(initial_stock)
         db_session.commit()
 
         # Update on the same day
-        engine_svc.update_ranking("UPDATED.NS", 105.0, 55.0, date(2024, 1, 2))
+        engine_svc.update_ranking("UPDATED.NS", 105.0, 55.0, test_low_52_date, test_high_52_price, date(2024, 1, 2))
+        db_session.commit() # Commit the changes made by update_ranking
         stock = db_session.query(MomentumStock).filter_by(symbol="UPDATED.NS").first()
         
         assert stock.rank_score == 5 # Score should not change if updated on same day
         assert stock.current_price == 105.0 # Price should update
+        assert stock.low_52_week == 55.0
+        assert stock.low_52_week_date == test_low_52_date
+        assert stock.high_52_week_price == test_high_52_price
+        assert stock.high_52_week_date == date(2024, 1, 2)
 
     def test_ranking_positive_update_existing_stock_score_increase(self, db_session, app_settings):
         engine_svc = RankingEngine(db_session, app_settings)
         today = datetime.now(zoneinfo.ZoneInfo(app_settings.TIMEZONE)).date()
         yesterday = today - timedelta(days=1)
         
-        # Add initial stock
+        # New dummy values for testing
+        test_low_52_date = date(2024, 1, 11)
+        test_high_52_price = 165.0
+        
+        # Add initial stock with all new fields
         initial_stock = MomentumStock(
             symbol="INCREASE.NS", rank_score=5, last_seen_date=yesterday,
-            current_price=100.0, low_52_week=50.0, high_52_week_date=date(2024, 1, 1)
+            current_price=100.0, low_52_week=50.0, low_52_week_date=date(2023, 12, 2),
+            high_52_week_price=125.0, high_52_week_date=date(2024, 1, 1)
         )
         db_session.add(initial_stock)
         db_session.commit()
 
         # Update the next day (within STREAK_THRESHOLD_DAYS)
-        engine_svc.update_ranking("INCREASE.NS", 105.0, 55.0, date(2024, 1, 2))
+        engine_svc.update_ranking("INCREASE.NS", 105.0, 55.0, test_low_52_date, test_high_52_price, date(2024, 1, 2))
+        db_session.commit() # Commit the changes made by update_ranking
         stock = db_session.query(MomentumStock).filter_by(symbol="INCREASE.NS").first()
         
         assert stock.rank_score == 6 # Score should increase
         assert stock.last_seen_date == today
+        assert stock.current_price == 105.0
+        assert stock.low_52_week == 55.0
+        assert stock.low_52_week_date == test_low_52_date
+        assert stock.high_52_week_price == test_high_52_price
+        assert stock.high_52_week_date == date(2024, 1, 2)
 
     def test_ranking_positive_update_existing_stock_score_reset(self, db_session, app_settings):
         engine_svc = RankingEngine(db_session, app_settings)
         today = datetime.now(zoneinfo.ZoneInfo(app_settings.TIMEZONE)).date()
         old_date = today - timedelta(days=app_settings.STREAK_THRESHOLD_DAYS + 1)
         
-        # Add initial stock
+        # New dummy values for testing
+        test_low_52_date = date(2024, 1, 12)
+        test_high_52_price = 170.0
+        
+        # Add initial stock with all new fields
         initial_stock = MomentumStock(
             symbol="RESET.NS", rank_score=5, last_seen_date=old_date,
-            current_price=100.0, low_52_week=50.0, high_52_week_date=date(2024, 1, 1)
+            current_price=100.0, low_52_week=50.0, low_52_week_date=date(2023, 12, 3),
+            high_52_week_price=130.0, high_52_week_date=date(2024, 1, 1)
         )
         db_session.add(initial_stock)
         db_session.commit()
 
         # Update after STREAK_THRESHOLD_DAYS
-        engine_svc.update_ranking("RESET.NS", 105.0, 55.0, date(2024, 1, 2))
+        engine_svc.update_ranking("RESET.NS", 105.0, 55.0, test_low_52_date, test_high_52_price, date(2024, 1, 2))
+        db_session.commit() # Commit the changes made by update_ranking
         stock = db_session.query(MomentumStock).filter_by(symbol="RESET.NS").first()
         
         assert stock.rank_score == 6 # Score should reset
+        assert stock.last_seen_date == today
+        assert stock.current_price == 105.0
+        assert stock.low_52_week == 55.0
+        assert stock.low_52_week_date == test_low_52_date
+        assert stock.high_52_week_price == test_high_52_price
+        assert stock.high_52_week_date == date(2024, 1, 2)
 
 # --- MarketValidator Tests ---
 class TestMarketValidator:
@@ -342,10 +384,20 @@ class TestStockFetcher:
 
         mock_ranking_engine_instance.update_ranking.assert_called_once()
         args, kwargs = mock_ranking_engine_instance.update_ranking.call_args
-        assert args[0] == "GOODSTOCK.NS"
-        assert args[1] == 105.0 # current_price
-        assert args[2] == 90.0  # low_52_week
-        assert isinstance(args[3], date)
+        
+        # Extract expected values from the mock_df
+        expected_current_close = 105.0
+        expected_low_52_week_price = 90.0
+        expected_low_52_week_date = mock_df['Low'].idxmin().date()
+        expected_high_52_week_price = float(mock_df['High'].max())
+        expected_high_52_week_date = mock_df['High'].idxmax().date()
+
+        assert args[0] == "GOODSTOCK.NS" # symbol
+        assert args[1] == expected_current_close # current_price
+        assert args[2] == expected_low_52_week_price # low_52_week_price
+        assert args[3] == expected_low_52_week_date # low_52_week_date
+        assert args[4] == expected_high_52_week_price # high_52_week_price
+        assert args[5] == expected_high_52_week_date # high_52_week_date
     
     @patch('yfinance.download')
     @patch('src.services.FraudDetector.relative_liquidity_check')

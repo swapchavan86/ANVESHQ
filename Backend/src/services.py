@@ -150,7 +150,7 @@ class RankingEngine:
         self.settings = settings_obj
         self.today = datetime.datetime.now(zoneinfo.ZoneInfo(self.settings.TIMEZONE)).date()
 
-    def update_ranking(self, symbol: str, price: float, low_52: float, high_date: datetime.date):
+    def update_ranking(self, symbol: str, price: float, low_52_week_price: float, low_52_week_date: datetime.date, high_52_week_price: float, high_52_week_date: datetime.date):
         stmt = select(MomentumStock).where(MomentumStock.symbol == symbol)
         stock = self.session.execute(stmt).scalar_one_or_none()
         
@@ -164,8 +164,10 @@ class RankingEngine:
             stock.rank_score = min((stock.rank_score or 0) + 1, self.settings.MAX_RANK)
         
         stock.current_price = price
-        stock.low_52_week = low_52
-        stock.high_52_week_date = high_date
+        stock.low_52_week = low_52_week_price
+        stock.low_52_week_date = low_52_week_date
+        stock.high_52_week_price = high_52_week_price
+        stock.high_52_week_date = high_52_week_date
         stock.last_seen_date = self.today
 
     def decay_unseen_ranks(self, seen_symbols: set[str]):
@@ -259,7 +261,18 @@ class StockFetcher:
                         
                         high_date_idx = df['High'].idxmax()
                         high_date = high_date_idx.date() if isinstance(high_date_idx, pd.Timestamp) else high_date_idx
-                        engine_svc.update_ranking(symbol, current_close, float(df['Low'].min()), high_date)
+                        
+                        low_date_idx = df['Low'].idxmin()
+                        low_date = low_date_idx.date() if isinstance(low_date_idx, pd.Timestamp) else low_date_idx
+
+                        engine_svc.update_ranking(
+                            symbol, 
+                            current_close, 
+                            float(df['Low'].min()), 
+                            low_date,
+                            float(df['High'].max()), 
+                            high_date
+                        )
                         qualified_symbols.add(symbol)
                     except Exception as e:
                         logger.error(f"Error processing {symbol}: {type(e).__name__} - {e}", exc_info=True)
