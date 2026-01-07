@@ -3,7 +3,7 @@ import "./globals.css";
 import { MainLayout } from "@/components/layout/MainLayout";
 
 export const metadata: Metadata = {
-  title: "Nexera | Stock Market Intelligence",
+  title: "Anveshq | Stock Market Intelligence",
   description: "Professional-grade stock analysis and risk assessment.",
 };
 

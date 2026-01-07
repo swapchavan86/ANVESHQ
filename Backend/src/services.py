@@ -17,7 +17,7 @@ import threading
 import json
 import os
 
-logger = logging.getLogger("Nexara")
+logger = logging.getLogger("Anveshq")
 logger.setLevel(logging.INFO)
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 

@@ -14,11 +14,11 @@ from src.utils import TickerLoader
 
 logging.basicConfig(
     level=getattr(logging, get_settings().LOG_LEVEL, logging.INFO),
-    format="[NEXARA:FLUXMIND] [%(levelname)s] %(message)s",
+    format="[ANVESHQ:FLUXMIND] [%(levelname)s] %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
-logger = logging.getLogger("Nexara")
+logger = logging.getLogger("Anveshq")
 
 def populate_known_errors():
     known_errors = [

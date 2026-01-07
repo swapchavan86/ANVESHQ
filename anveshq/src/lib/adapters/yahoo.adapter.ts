@@ -2,7 +2,7 @@ import { StockQuoteDTO, RiskLevel } from "../dtos/stock.dto";
 
 /**
  * YahooPriceAdapter handles the transformation of raw Yahoo Finance data
- * into our internal Nexera DTOs.
+ * into our internal Anveshq DTOs.
  */
 export class YahooPriceAdapter {
   async getQuote(symbol: string): Promise<StockQuoteDTO> {

@@ -15,7 +15,7 @@ import logging
 from src.config import get_settings
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='[NEXARA:ROOTSET] [%(levelname)s] %(message)s')
+logging.basicConfig(level=logging.INFO, format='[ANVESHQ:ROOTSET] [%(levelname)s] %(message)s')
 
 # Define the directory to store the Rootset data files.
 DATA_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'master')

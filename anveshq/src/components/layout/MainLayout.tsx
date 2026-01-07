@@ -9,7 +9,7 @@ export const MainLayout = ({ children }: { children: React.ReactNode }) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-8">
             <Link href="/" className="text-2xl font-bold tracking-tighter text-foreground">
-              NEXERA<span className="text-accent-success">.</span>
+              ANVESHQ<span className="text-accent-success">.</span>
             </Link>
             <nav className="hidden md:flex items-center space-x-1">
               <NavItem href="/dashboard" label="Dashboard" />
@@ -32,7 +32,7 @@ export const MainLayout = ({ children }: { children: React.ReactNode }) => {
       {/* Footer */}
       <footer className="border-t border-border bg-white py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-          <p className="text-xs text-gray-400">© 2024 Nexera Intelligence. All rights reserved.</p>
+          <p className="text-xs text-gray-400">© 2024 Anveshq Intelligence. All rights reserved.</p>
           <nav className="flex flex-wrap justify-center gap-x-8 gap-y-2 text-xs font-medium text-gray-500">
             <Link href="/about" className="hover:text-foreground transition-colors">About Us</Link>
             <Link href="/contact" className="hover:text-foreground transition-colors">Contact Us</Link>
