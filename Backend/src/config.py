@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     # --- Momentum Rank System Settings ---
     MAX_RANK: int
     DECAY_FACTOR: float
+    REPETITION_COOLDOWN_DAYS: int
+    BREAKOUT_LOOKBACK_DAYS: int
     
     model_config = SettingsConfigDict(
         # For local development, read settings from a .env file at the project root.
