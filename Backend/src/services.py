@@ -15,8 +15,11 @@ import secrets
 import string
 import time
 import threading
+import random
 import json
 import os
+import requests
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger("Anveshq")
 logger.setLevel(logging.INFO)
@@ -37,6 +40,56 @@ class RiskAndQualityAnalyzer:
     
     It is important to note that this class does NOT perform fraud detection.
     """
+    @staticmethod
+    def get_fundamentals_from_google_finance(symbol: str) -> dict | None:
+        """
+        Scrapes Google Finance for key fundamentals as a fallback.
+        """
+        if not symbol.endswith(".NS"):
+            return None # Only handle NSE stocks for now
+            
+        google_symbol = symbol.replace(".NS", "") + ":NSE"
+        url = f"https://www.google.com/finance/quote/{google_symbol}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+
+            # --- This is the brittle part ---
+            # Find all divs that seem to contain financial data
+            all_divs = soup.find_all('div', class_='gyH2C')
+            
+            fundamentals = {}
+            
+            for div in all_divs:
+                if 'Market cap' in div.text:
+                    value_div = div.find_next_sibling('div')
+                    if value_div:
+                        # Value is like '₹8.34T'. Need to parse it.
+                        mc_text = value_div.text.strip().replace('₹', '')
+                        if 'T' in mc_text:
+                            mc_value = float(mc_text.replace('T', '')) * 1e12
+                        elif 'B' in mc_text:
+                            mc_value = float(mc_text.replace('B', '')) * 1e9
+                        else:
+                            mc_value = float(mc_text)
+                        fundamentals['marketCap'] = mc_value
+                
+                if 'P/E ratio' in div.text:
+                    value_div = div.find_next_sibling('div')
+                    if value_div and value_div.text.strip() != '—':
+                        fundamentals['trailingPE'] = float(value_div.text.strip())
+
+            return fundamentals if fundamentals else None
+
+        except Exception as e:
+            logger.error(f"Error scraping Google Finance for {symbol}: {e}")
+            return None
+
     @staticmethod
     def relative_liquidity_check(df: pd.DataFrame, settings_obj) -> tuple[bool, str | None]:
         """
@@ -129,31 +182,48 @@ class RiskAndQualityAnalyzer:
 
         if info is None:
             try:
+                time.sleep(random.uniform(0.5, 1.5))
                 ticker = yf.Ticker(symbol)
                 info = ticker.info
-                cache[symbol] = {
-                    'info': info,
-                    'timestamp': datetime.datetime.now().isoformat()
-                }
-                with open(CACHE_FILE, 'w') as f:
-                    json.dump(cache, f)
+                if not info: # yfinance can return an empty dict
+                    raise ValueError("yfinance returned empty info dict")
             except Exception as e:
-                logger.warning(f"Could not fetch fundamentals for {symbol}: {e}")
-                return True # Default to True if yfinance fails
+                logger.info(f"yfinance failed for {symbol}: {e}. Falling back to web scraping.")
+                try:
+                    info = RiskAndQualityAnalyzer.get_fundamentals_from_google_finance(symbol)
+                except Exception as scrape_e:
+                    logger.error(f"Web scraping failed for {symbol}: {scrape_e}")
+                    # Fail open if both primary and fallback fail
+                    return True 
+            
+            # Cache whatever result we got
+            cache[symbol] = {
+                'info': info,
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+            with open(CACHE_FILE, 'w') as f:
+                json.dump(cache, f)
+
+        if not info:
+            logger.warning(f"Could not process fundamentals for {symbol}: 'info' is empty or None after fallback.")
+            return True
 
         # --- Filtering Logic ---
         mcap = info.get('marketCap', 0)
+        if mcap is None: # marketCap can be None
+            mcap = 0
+            
         if mcap < (settings_obj.MIN_MCAP_CRORES * 10_000_000):
             logger.info(f"REJECT {symbol}: Mcap too low ({mcap})")
             return False
 
         pe = info.get('trailingPE')
-        if isinstance(pe, (int, float)) and pe < 0:
+        if pe is not None and isinstance(pe, (int, float)) and pe < 0:
              logger.info(f"REJECT {symbol}: Loss Making (Negative PE)")
              return False
         
         dte = info.get('debtToEquity')
-        if isinstance(dte, (int, float)) and dte > 3:
+        if dte is not None and isinstance(dte, (int, float)) and dte > 3:
             logger.info(f"REJECT {symbol}: High Debt (D/E > 3)")
             return False
 
@@ -445,3 +515,7 @@ class ErrorLogger:
             )
             session.add(new_error)
             session.commit()
+
+
+
+

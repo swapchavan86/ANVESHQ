@@ -51,13 +51,20 @@ class MockResponse:
         if self.status_code >= 400:
             raise requests.exceptions.HTTPError()
 
+@patch('src.master_builder.get_settings')
 @patch('requests.get')
-def test_rootset_builder_success(mock_get):
+def test_rootset_builder_success(mock_get, mock_get_settings):
     """
     Tests the successful execution of the rootset_builder function,
     ensuring it fetches data from all tiers, processes it, and creates the
     correct JSON output files.
     """
+    # --- Mock settings ---
+    mock_settings = MagicMock()
+    mock_settings.NSE_EQUITY_LIST_URL = "http://test.com/equity.csv"
+    mock_settings.NSE_NIFTY500_CSV_URL = "http://test.com/nifty500.csv"
+    mock_get_settings.return_value = mock_settings
+
     # --- Mock API responses ---
     def get_side_effect(url, headers):
         if "http://test.com/equity.csv" == url:
@@ -99,12 +106,18 @@ def test_rootset_builder_success(mock_get):
     assert symbols['INFY'] == 'TIER_2'
     assert symbols['WIPRO'] == 'TIER_2'
     
+@patch('src.master_builder.get_settings')
 @patch('requests.get')
-def test_rootset_builder_nse_failure(mock_get):
+def test_rootset_builder_nse_failure(mock_get, mock_get_settings):
     """
     Tests that the job aborts gracefully if the Tier 1 (NSE Master)
     fetch fails.
     """
+    # --- Mock settings ---
+    mock_settings = MagicMock()
+    mock_settings.NSE_EQUITY_LIST_URL = "http://test.com/equity.csv"
+    mock_get_settings.return_value = mock_settings
+
     # --- Mock API failure for NSE ---
     mock_get.side_effect = requests.exceptions.RequestException("Connection Error")
 
@@ -115,12 +128,19 @@ def test_rootset_builder_nse_failure(mock_get):
     # No files should be created if the mandatory Tier 1 source fails
     assert not os.listdir(DATA_DIR)
 
+@patch('src.master_builder.get_settings')
 @patch('requests.get')
-def test_rootset_builder_nifty500_failure(mock_get):
+def test_rootset_builder_nifty500_failure(mock_get, mock_get_settings):
     """
     Tests that the job continues execution and generates a file
     even if the Tier 2 (Nifty 500) fetch fails.
     """
+    # --- Mock settings ---
+    mock_settings = MagicMock()
+    mock_settings.NSE_EQUITY_LIST_URL = "http://test.com/equity.csv"
+    mock_settings.NSE_NIFTY500_CSV_URL = "http://test.com/nifty500.csv"
+    mock_get_settings.return_value = mock_settings
+
     # --- Mock successful NSE response and failed Nifty 500 response ---
     def get_side_effect(url, headers):
         if "http://test.com/equity.csv" == url:
