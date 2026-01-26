@@ -227,15 +227,46 @@ class TestRankingEngine:
 
 # --- MarketValidator Tests ---
 class TestMarketValidator:
+    @patch('src.services.requests.get')
+    @patch('src.services.requests.head')
     @patch('datetime.datetime')
-    def test_should_run_positive_weekday(self, mock_dt, app_settings):
+    def test_should_run_positive_weekday(self, mock_dt, mock_head, mock_get, app_settings):
         mock_dt.now.return_value = datetime(2025, 1, 6, 10, 0, 0, tzinfo=zoneinfo.ZoneInfo(app_settings.TIMEZONE)) # Monday
+        mock_head.return_value.status_code = 200
         result = MarketValidator.should_run(app_settings)
         assert result is True
 
     @patch('datetime.datetime')
     def test_should_run_negative_weekend(self, mock_dt, app_settings):
         mock_dt.now.return_value = datetime(2025, 1, 11, 10, 0, 0, tzinfo=zoneinfo.ZoneInfo(app_settings.TIMEZONE)) # Saturday
+        result = MarketValidator.should_run(app_settings)
+        assert result is False
+
+    @patch('src.services.requests.get')
+    @patch('src.services.requests.head')
+    @patch('datetime.datetime')
+    def test_should_run_negative_holiday_hardcoded(self, mock_dt, mock_head, mock_get, app_settings):
+        # 26th Feb 2025 is a Wednesday but is in our hardcoded holiday list
+        mock_dt.now.return_value = datetime(2025, 2, 26, 10, 0, 0, tzinfo=zoneinfo.ZoneInfo(app_settings.TIMEZONE))
+        result = MarketValidator.should_run(app_settings)
+        assert result is False
+        mock_head.assert_not_called()
+
+    @patch('src.services.requests.get')
+    @patch('src.services.requests.head')
+    @patch('datetime.datetime')
+    def test_should_run_negative_bhavcopy_missing(self, mock_dt, mock_head, mock_get, app_settings):
+        mock_dt.now.return_value = datetime(2025, 1, 8, 10, 0, 0, tzinfo=zoneinfo.ZoneInfo(app_settings.TIMEZONE)) # Wednesday
+        mock_head.return_value.status_code = 404
+        mock_get.return_value.status_code = 404
+        result = MarketValidator.should_run(app_settings)
+        assert result is False
+
+    @patch('src.services.requests.head')
+    @patch('datetime.datetime')
+    def test_should_run_negative_network_error(self, mock_dt, mock_head, app_settings):
+        mock_dt.now.return_value = datetime(2025, 1, 8, 10, 0, 0, tzinfo=zoneinfo.ZoneInfo(app_settings.TIMEZONE))
+        mock_head.side_effect = Exception("Network Down")
         result = MarketValidator.should_run(app_settings)
         assert result is False
 
