@@ -182,19 +182,28 @@ class RiskAndQualityAnalyzer:
 
         if info is None:
             try:
-                time.sleep(random.uniform(0.5, 1.5))
                 ticker = yf.Ticker(symbol)
                 info = ticker.info
                 if not info: # yfinance can return an empty dict
                     raise ValueError("yfinance returned empty info dict")
             except Exception as e:
-                logger.info(f"yfinance failed for {symbol}: {e}. Falling back to web scraping.")
+                # Try fast_info as a partial fallback for Market Cap (more robust than info)
                 try:
-                    info = RiskAndQualityAnalyzer.get_fundamentals_from_google_finance(symbol)
-                except Exception as scrape_e:
-                    logger.error(f"Web scraping failed for {symbol}: {scrape_e}")
-                    # Fail open if both primary and fallback fail
-                    return True 
+                    fast_info = ticker.fast_info
+                    mcap = fast_info.get('marketCap')
+                    if mcap:
+                        info = {'marketCap': mcap, 'trailingPE': None, 'debtToEquity': None}
+                        logger.info(f"Recovered Market Cap for {symbol} using fast_info.")
+                    else:
+                        raise e
+                except Exception:
+                    logger.info(f"yfinance failed for {symbol}: {e}. Falling back to web scraping.")
+                    try:
+                        info = RiskAndQualityAnalyzer.get_fundamentals_from_google_finance(symbol)
+                    except Exception as scrape_e:
+                        logger.error(f"Web scraping failed for {symbol}: {scrape_e}")
+                        # Fail open if both primary and fallback fail
+                        return True 
             
             # Cache whatever result we got
             cache[symbol] = {
@@ -341,6 +350,16 @@ class StockFetcher:
                     try:
                         df_yf = yf.download(symbol, period="1y", progress=False, auto_adjust=True, timeout=10)
                         
+                        # Flatten MultiIndex columns if present (fix for yfinance returning (Price, Ticker) columns)
+                        if isinstance(df_yf.columns, pd.MultiIndex):
+                            df_yf.columns = df_yf.columns.get_level_values(0)
+                        
+                        # FIX: Remove duplicate columns (caused by flattening MultiIndex sometimes)
+                        df_yf = df_yf.loc[:, ~df_yf.columns.duplicated()]
+                        
+                        # FIX: Remove duplicate index dates (clean up yfinance data)
+                        df_yf = df_yf[~df_yf.index.duplicated(keep='last')]
+
                         symbol_without_suffix = symbol.split('.')[0]
                         daily_data_row = bhavcopy_df[bhavcopy_df['TckrSymb'] == symbol_without_suffix]
 
@@ -515,7 +534,3 @@ class ErrorLogger:
             )
             session.add(new_error)
             session.commit()
-
-
-
-
