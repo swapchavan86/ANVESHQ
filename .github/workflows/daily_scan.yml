@@ -40,6 +40,8 @@ jobs:
           NEAR_52_WEEK_HIGH_THRESHOLD: ${{ secrets.NEAR_52_WEEK_HIGH_THRESHOLD }}
           VOLUME_CONFIRMATION_FACTOR: ${{ secrets.VOLUME_CONFIRMATION_FACTOR }}
           RELATIVE_LIQUIDITY_FACTOR: ${{ secrets.RELATIVE_LIQUIDITY_FACTOR }}
+          REPETITION_COOLDOWN_DAYS: ${{ secrets.REPETITION_COOLDOWN_DAYS }}
+          BREAKOUT_LOOKBACK_DAYS: ${{ secrets.BREAKOUT_LOOKBACK_DAYS }}
           MAX_RANK: ${{ secrets.MAX_RANK }}
           DECAY_FACTOR: ${{ secrets.DECAY_FACTOR }}
         working-directory: Backend
