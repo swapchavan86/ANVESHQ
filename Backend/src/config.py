@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     NEAR_52_WEEK_HIGH_THRESHOLD: float
     VOLUME_CONFIRMATION_FACTOR: float
     RELATIVE_LIQUIDITY_FACTOR: float
+    REPETITION_COOLDOWN_DAYS: int
+    BREAKOUT_LOOKBACK_DAYS: int
 
     # --- Momentum Rank System Settings ---
     MAX_RANK: int
