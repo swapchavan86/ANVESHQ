@@ -10,12 +10,12 @@ import json
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../Backend')))
 
-from src.services import FraudDetector, RankingEngine, MarketValidator, StockFetcher
+from src.services import RiskAndQualityAnalyzer, RankingEngine, MarketValidator, StockFetcher
 from src.utils import TickerLoader
 from src.models import MomentumStock, Base
 from src.config import get_settings
 
-# --- FraudDetector Tests ---
+# --- RiskAndQualityAnalyzer Tests ---
 @pytest.fixture
 def sample_dataframe():
     dates = pd.to_datetime([f'2025-01-{i:02d}' for i in range(1, 21)])
@@ -26,27 +26,27 @@ def sample_dataframe():
         'Low': [95.0] * 200,
     }, index=pd.to_datetime([date(2024, 1, 1) + timedelta(days=i) for i in range(200)]))
 
-class TestFraudDetector:
+class TestRiskAndQualityAnalyzer:
     # --- basic_liquidity_check ---
     def test_liquidity_positive_sufficient_turnover(self, sample_dataframe, app_settings):
         # 100000 volume * 100 price = 1 Cr turnover, which is > 0.5 Cr
         sample_dataframe.loc[sample_dataframe.index[-10:], 'Volume'] *= 2
-        result, _ = FraudDetector.relative_liquidity_check(sample_dataframe, app_settings)
+        result, _ = RiskAndQualityAnalyzer.relative_liquidity_check(sample_dataframe, app_settings)
         assert result is True
 
     def test_liquidity_negative_insufficient_turnover(self, sample_dataframe, app_settings):
         # 1000 volume * 100 price = 1 Lakh turnover, which is < 0.5 Cr
         sample_dataframe['Volume'].iloc[-10:] = 1000
-        result, _ = FraudDetector.relative_liquidity_check(sample_dataframe, app_settings)
+        result, _ = RiskAndQualityAnalyzer.relative_liquidity_check(sample_dataframe, app_settings)
         assert result is False
 
     def test_liquidity_negative_empty_dataframe(self, app_settings):
-        result, _ = FraudDetector.relative_liquidity_check(pd.DataFrame(), app_settings)
+        result, _ = RiskAndQualityAnalyzer.relative_liquidity_check(pd.DataFrame(), app_settings)
         assert result is False
 
     def test_liquidity_negative_too_few_rows(self, app_settings):
         df = pd.DataFrame({'Volume': [100000] * 5, 'Close': [100.0] * 5})
-        result, _ = FraudDetector.relative_liquidity_check(df, app_settings)
+        result, _ = RiskAndQualityAnalyzer.relative_liquidity_check(df, app_settings)
         assert result is False
     
     # --- deep_fundamental_check ---
@@ -60,7 +60,7 @@ class TestFraudDetector:
             'debtToEquity': 1.0 # Low D/E
         }
         mock_ticker.return_value = mock_ticker_instance
-        result = FraudDetector.deep_fundamental_check("TEST.NS", app_settings)
+        result = RiskAndQualityAnalyzer.deep_fundamental_check("TEST.NS", app_settings)
         assert result is True
 
     @patch('os.path.exists', return_value=False)
@@ -73,7 +73,7 @@ class TestFraudDetector:
             'debtToEquity': 50.0
         }
         mock_ticker.return_value = mock_ticker_instance
-        result = FraudDetector.deep_fundamental_check("TEST.NS", app_settings)
+        result = RiskAndQualityAnalyzer.deep_fundamental_check("TEST.NS", app_settings)
         assert result is False
 
     @patch('os.path.exists', return_value=False)
@@ -86,7 +86,7 @@ class TestFraudDetector:
             'debtToEquity': 50.0
         }
         mock_ticker.return_value = mock_ticker_instance
-        result = FraudDetector.deep_fundamental_check("TEST.NS", app_settings)
+        result = RiskAndQualityAnalyzer.deep_fundamental_check("TEST.NS", app_settings)
         assert result is False
 
     @patch('os.path.exists', return_value=False)
@@ -99,14 +99,14 @@ class TestFraudDetector:
             'debtToEquity': 400.0 # High D/E
         }
         mock_ticker.return_value = mock_ticker_instance
-        result = FraudDetector.deep_fundamental_check("TEST.NS", app_settings)
+        result = RiskAndQualityAnalyzer.deep_fundamental_check("TEST.NS", app_settings)
         assert result is False
 
     @patch('os.path.exists', return_value=False)
     @patch('yfinance.Ticker')
     def test_fundamental_negative_invalid_symbol_or_api_error(self, mock_ticker, mock_exists, app_settings, db_session):
         mock_ticker.side_effect = Exception("API Error") # Simulate API error
-        result = FraudDetector.deep_fundamental_check("INVALID", app_settings)
+        result = RiskAndQualityAnalyzer.deep_fundamental_check("INVALID", app_settings)
         # Should return True if it cannot verify (fails gracefully)
         assert result is True
 
@@ -227,15 +227,46 @@ class TestRankingEngine:
 
 # --- MarketValidator Tests ---
 class TestMarketValidator:
+    @patch('src.services.requests.get')
+    @patch('src.services.requests.head')
     @patch('datetime.datetime')
-    def test_should_run_positive_weekday(self, mock_dt, app_settings):
+    def test_should_run_positive_weekday(self, mock_dt, mock_head, mock_get, app_settings):
         mock_dt.now.return_value = datetime(2025, 1, 6, 10, 0, 0, tzinfo=zoneinfo.ZoneInfo(app_settings.TIMEZONE)) # Monday
+        mock_head.return_value.status_code = 200
         result = MarketValidator.should_run(app_settings)
         assert result is True
 
     @patch('datetime.datetime')
     def test_should_run_negative_weekend(self, mock_dt, app_settings):
         mock_dt.now.return_value = datetime(2025, 1, 11, 10, 0, 0, tzinfo=zoneinfo.ZoneInfo(app_settings.TIMEZONE)) # Saturday
+        result = MarketValidator.should_run(app_settings)
+        assert result is False
+
+    @patch('src.services.requests.get')
+    @patch('src.services.requests.head')
+    @patch('datetime.datetime')
+    def test_should_run_negative_holiday_hardcoded(self, mock_dt, mock_head, mock_get, app_settings):
+        # 26th Feb 2025 is a Wednesday but is in our hardcoded holiday list
+        mock_dt.now.return_value = datetime(2025, 2, 26, 10, 0, 0, tzinfo=zoneinfo.ZoneInfo(app_settings.TIMEZONE))
+        result = MarketValidator.should_run(app_settings)
+        assert result is False
+        mock_head.assert_not_called()
+
+    @patch('src.services.requests.get')
+    @patch('src.services.requests.head')
+    @patch('datetime.datetime')
+    def test_should_run_negative_bhavcopy_missing(self, mock_dt, mock_head, mock_get, app_settings):
+        mock_dt.now.return_value = datetime(2025, 1, 8, 10, 0, 0, tzinfo=zoneinfo.ZoneInfo(app_settings.TIMEZONE)) # Wednesday
+        mock_head.return_value.status_code = 404
+        mock_get.return_value.status_code = 404
+        result = MarketValidator.should_run(app_settings)
+        assert result is False
+
+    @patch('src.services.requests.head')
+    @patch('datetime.datetime')
+    def test_should_run_negative_network_error(self, mock_dt, mock_head, app_settings):
+        mock_dt.now.return_value = datetime(2025, 1, 8, 10, 0, 0, tzinfo=zoneinfo.ZoneInfo(app_settings.TIMEZONE))
+        mock_head.side_effect = Exception("Network Down")
         result = MarketValidator.should_run(app_settings)
         assert result is False
 
@@ -343,9 +374,9 @@ class TestTickerLoader:
 # --- StockFetcher Tests ---
 class TestStockFetcher:
     @patch('yfinance.download')
-    @patch('src.services.FraudDetector.volume_confirmation')
-    @patch('src.services.FraudDetector.relative_liquidity_check')
-    @patch('src.services.FraudDetector.deep_fundamental_check')
+    @patch('src.services.RiskAndQualityAnalyzer.volume_confirmation')
+    @patch('src.services.RiskAndQualityAnalyzer.relative_liquidity_check')
+    @patch('src.services.RiskAndQualityAnalyzer.deep_fundamental_check')
     @patch('src.services.RankingEngine')
     @patch('src.services.MarketValidator.validate_market_data_freshness')
     @patch('src.services.datetime')
@@ -400,8 +431,8 @@ class TestStockFetcher:
         assert args[5] == expected_high_52_week_date # high_52_week_date
     
     @patch('yfinance.download')
-    @patch('src.services.FraudDetector.relative_liquidity_check')
-    @patch('src.services.FraudDetector.deep_fundamental_check')
+    @patch('src.services.RiskAndQualityAnalyzer.relative_liquidity_check')
+    @patch('src.services.RiskAndQualityAnalyzer.deep_fundamental_check')
     @patch('src.services.RankingEngine')
     @patch('src.services.MarketValidator.validate_market_data_freshness')
     @patch('src.services.datetime')
@@ -431,8 +462,8 @@ class TestStockFetcher:
         mock_ranking_engine_cls.return_value.update_ranking.assert_not_called()
 
     @patch('yfinance.download')
-    @patch('src.services.FraudDetector.relative_liquidity_check')
-    @patch('src.services.FraudDetector.deep_fundamental_check')
+    @patch('src.services.RiskAndQualityAnalyzer.relative_liquidity_check')
+    @patch('src.services.RiskAndQualityAnalyzer.deep_fundamental_check')
     @patch('src.services.RankingEngine')
     @patch('src.services.MarketValidator.validate_market_data_freshness')
     @patch('src.services.datetime')
@@ -463,8 +494,8 @@ class TestStockFetcher:
         mock_ranking_engine_cls.return_value.update_ranking.assert_not_called()
 
     @patch('yfinance.download')
-    @patch('src.services.FraudDetector.relative_liquidity_check')
-    @patch('src.services.FraudDetector.deep_fundamental_check')
+    @patch('src.services.RiskAndQualityAnalyzer.relative_liquidity_check')
+    @patch('src.services.RiskAndQualityAnalyzer.deep_fundamental_check')
     @patch('src.services.RankingEngine')
     @patch('src.services.MarketValidator.validate_market_data_freshness')
     @patch('src.services.datetime')
@@ -496,8 +527,8 @@ class TestStockFetcher:
         mock_ranking_engine_cls.return_value.update_ranking.assert_not_called()
 
     @patch('yfinance.download')
-    @patch('src.services.FraudDetector.relative_liquidity_check')
-    @patch('src.services.FraudDetector.deep_fundamental_check')
+    @patch('src.services.RiskAndQualityAnalyzer.relative_liquidity_check')
+    @patch('src.services.RiskAndQualityAnalyzer.deep_fundamental_check')
     @patch('src.services.RankingEngine')
     @patch('src.services.MarketValidator.validate_market_data_freshness')
     @patch('src.services.datetime')
@@ -527,8 +558,8 @@ class TestStockFetcher:
         mock_ranking_engine_cls.return_value.update_ranking.assert_not_called()
 
     @patch('yfinance.download')
-    @patch('src.services.FraudDetector.relative_liquidity_check')
-    @patch('src.services.FraudDetector.deep_fundamental_check')
+    @patch('src.services.RiskAndQualityAnalyzer.relative_liquidity_check')
+    @patch('src.services.RiskAndQualityAnalyzer.deep_fundamental_check')
     @patch('src.services.RankingEngine')
     @patch('src.services.MarketValidator.validate_market_data_freshness')
     @patch('src.services.datetime')

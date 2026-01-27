@@ -27,6 +27,19 @@ class MomentumStock(Base):
     rank_score: Mapped[int] = mapped_column(Integer, default=1)
     last_seen_date: Mapped[Date] = mapped_column(Date)
     
+    # New Rank System Columns
+    daily_rank_delta: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_rank_score: Mapped[int] = mapped_column(Integer, nullable=True)
+
+    # Top 10 Tracking
+    last_top10_date: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
+    top10_hit_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Strength and Quality Indicators
+    risk_score: Mapped[int] = mapped_column(Integer, nullable=True)
+    is_volume_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=True)
+    is_fundamental_ok: Mapped[bool] = mapped_column(Boolean, nullable=True)
+
     # Financial Data
     current_price: Mapped[float] = mapped_column(Float, nullable=True)
     low_52_week: Mapped[float] = mapped_column(Float, nullable=True) # This is 52-week low price

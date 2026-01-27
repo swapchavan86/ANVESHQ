@@ -1,10 +1,11 @@
 import logging
 import datetime
+from datetime import date
 import zoneinfo
 import yfinance as yf
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from sqlalchemy import select
+from sqlalchemy import select, desc, asc
 from sqlalchemy.orm import Session
 from src.config import get_settings
 from src.models import MomentumStock, Error
@@ -14,8 +15,11 @@ import secrets
 import string
 import time
 import threading
+import random
 import json
 import os
+import requests
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger("Anveshq")
 logger.setLevel(logging.INFO)
@@ -24,13 +28,74 @@ logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 CACHE_FILE = "fundamentals_cache.json"
 CACHE_EXPIRY_DAYS = 7
 
-# --- CLASS 1: QUALITY, RISK & SCORING ---
-class FraudDetector:
+# --- CLASS 1: RISK AND QUALITY ANALYSIS ---
+class RiskAndQualityAnalyzer:
+    """
+    Evaluates the risk and signal quality of a stock's momentum.
+
+    This class provides static methods to perform various checks, including:
+    - Liquidity analysis (relative volume and turnover)
+    - Volume confirmation to validate price moves
+    - Risk scoring based on volatility and other factors.
+    
+    It is important to note that this class does NOT perform fraud detection.
+    """
+    @staticmethod
+    def get_fundamentals_from_google_finance(symbol: str) -> dict | None:
+        """
+        Scrapes Google Finance for key fundamentals as a fallback.
+        """
+        if not symbol.endswith(".NS"):
+            return None # Only handle NSE stocks for now
+            
+        google_symbol = symbol.replace(".NS", "") + ":NSE"
+        url = f"https://www.google.com/finance/quote/{google_symbol}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+
+            # --- This is the brittle part ---
+            # Find all divs that seem to contain financial data
+            all_divs = soup.find_all('div', class_='gyH2C')
+            
+            fundamentals = {}
+            
+            for div in all_divs:
+                if 'Market cap' in div.text:
+                    value_div = div.find_next_sibling('div')
+                    if value_div:
+                        # Value is like '₹8.34T'. Need to parse it.
+                        mc_text = value_div.text.strip().replace('₹', '')
+                        if 'T' in mc_text:
+                            mc_value = float(mc_text.replace('T', '')) * 1e12
+                        elif 'B' in mc_text:
+                            mc_value = float(mc_text.replace('B', '')) * 1e9
+                        else:
+                            mc_value = float(mc_text)
+                        fundamentals['marketCap'] = mc_value
+                
+                if 'P/E ratio' in div.text:
+                    value_div = div.find_next_sibling('div')
+                    if value_div and value_div.text.strip() != '—':
+                        fundamentals['trailingPE'] = float(value_div.text.strip())
+
+            return fundamentals if fundamentals else None
+
+        except Exception as e:
+            logger.error(f"Error scraping Google Finance for {symbol}: {e}")
+            return None
+
     @staticmethod
     def relative_liquidity_check(df: pd.DataFrame, settings_obj) -> tuple[bool, str | None]:
         """
         Relative Liquidity Check: 10D Median Turnover vs 180D Median Turnover.
         A stock's recent liquidity should not be abnormally low compared to its history.
+        This check helps filter out stocks with liquidity and volume anomalies.
         """
         if len(df) < 180: return False, "Insufficient history for liquidity check"
         
@@ -48,7 +113,7 @@ class FraudDetector:
     def volume_confirmation(df: pd.DataFrame, settings_obj) -> tuple[bool, str | None]:
         """
         Volume Confirmation: 5D Avg Volume must be X times of 30D Avg Volume.
-        Ensures the recent price move is backed by significant volume.
+        Ensures the recent price move is backed by significant volume, a key aspect of signal quality validation.
         """
         if len(df) < 30: return False, "Insufficient history for volume confirmation"
         
@@ -63,6 +128,10 @@ class FraudDetector:
     
     @staticmethod
     def calculate_risk_score(df: pd.DataFrame, current_price: float, high_52: float) -> tuple[int, list[str]]:
+        """
+        Calculates a risk score based on price volatility, volume patterns, and other momentum quality indicators.
+        A lower score indicates better momentum quality.
+        """
         risk_score = 0
         risk_reasons = []
         if not df.empty and df['Close'].iloc[-1] / df['Close'].iloc[-2] > 1.12:
@@ -115,29 +184,55 @@ class FraudDetector:
             try:
                 ticker = yf.Ticker(symbol)
                 info = ticker.info
-                cache[symbol] = {
-                    'info': info,
-                    'timestamp': datetime.datetime.now().isoformat()
-                }
-                with open(CACHE_FILE, 'w') as f:
-                    json.dump(cache, f)
+                if not info: # yfinance can return an empty dict
+                    raise ValueError("yfinance returned empty info dict")
             except Exception as e:
-                logger.warning(f"Could not fetch fundamentals for {symbol}: {e}")
-                return True # Default to True if yfinance fails
+                # Try fast_info as a partial fallback for Market Cap (more robust than info)
+                try:
+                    fast_info = ticker.fast_info
+                    mcap = fast_info.get('marketCap')
+                    if mcap:
+                        info = {'marketCap': mcap, 'trailingPE': None, 'debtToEquity': None}
+                        logger.info(f"Recovered Market Cap for {symbol} using fast_info.")
+                    else:
+                        raise e
+                except Exception:
+                    logger.info(f"yfinance failed for {symbol}: {e}. Falling back to web scraping.")
+                    try:
+                        info = RiskAndQualityAnalyzer.get_fundamentals_from_google_finance(symbol)
+                    except Exception as scrape_e:
+                        logger.error(f"Web scraping failed for {symbol}: {scrape_e}")
+                        # Fail open if both primary and fallback fail
+                        return True 
+            
+            # Cache whatever result we got
+            cache[symbol] = {
+                'info': info,
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+            with open(CACHE_FILE, 'w') as f:
+                json.dump(cache, f)
+
+        if not info:
+            logger.warning(f"Could not process fundamentals for {symbol}: 'info' is empty or None after fallback.")
+            return True
 
         # --- Filtering Logic ---
         mcap = info.get('marketCap', 0)
+        if mcap is None: # marketCap can be None
+            mcap = 0
+            
         if mcap < (settings_obj.MIN_MCAP_CRORES * 10_000_000):
             logger.info(f"REJECT {symbol}: Mcap too low ({mcap})")
             return False
 
         pe = info.get('trailingPE')
-        if isinstance(pe, (int, float)) and pe < 0:
+        if pe is not None and isinstance(pe, (int, float)) and pe < 0:
              logger.info(f"REJECT {symbol}: Loss Making (Negative PE)")
              return False
         
         dte = info.get('debtToEquity')
-        if isinstance(dte, (int, float)) and dte > 3:
+        if dte is not None and isinstance(dte, (int, float)) and dte > 3:
             logger.info(f"REJECT {symbol}: High Debt (D/E > 3)")
             return False
 
@@ -179,8 +274,14 @@ class RankingEngine:
                 logger.info("No stocks to decay.")
                 return
             for stock in stocks_to_decay:
-                new_rank = (stock.rank_score or 0) * self.settings.DECAY_FACTOR
-                stock.rank_score = max(0, int(new_rank))
+                unseen_days = (self.today - stock.last_seen_date).days
+                
+                if unseen_days == 2:
+                    stock.rank_score = max(0, stock.rank_score - 1)
+                elif unseen_days == 3:
+                    stock.rank_score = max(0, stock.rank_score - 2)
+                elif unseen_days > 3:
+                    stock.rank_score = 0
             self.session.commit()
             logger.info(f"Successfully decayed rank for {len(stocks_to_decay)} stocks.")
         except Exception as e:
@@ -192,6 +293,53 @@ class RankingEngine:
 # --- CLASS 3: PARALLEL FETCHER ---
 class StockFetcher:
     @staticmethod
+    def get_top_movers(session: Session):
+        stmt = select(MomentumStock).order_by(
+            desc(MomentumStock.daily_rank_delta),
+            desc(MomentumStock.rank_score),
+            asc(MomentumStock.top10_hit_count)
+        ).limit(10)
+        return session.execute(stmt).scalars().all()
+
+    @staticmethod
+    def get_top_movers_with_repetition_control(session: Session, settings_obj, today: date):
+        stmt = select(MomentumStock).order_by(
+            desc(MomentumStock.daily_rank_delta),
+            desc(MomentumStock.rank_score),
+            asc(MomentumStock.top10_hit_count)
+        )
+        all_candidates = session.execute(stmt).scalars().all()
+
+        top_10_list = []
+        
+        for stock in all_candidates:
+            if len(top_10_list) >= 10:
+                break
+
+            if stock.last_top10_date and (today - stock.last_top10_date).days <= settings_obj.REPETITION_COOLDOWN_DAYS:
+                if stock.daily_rank_delta < 2:
+                    logger.info(f"REPETITION CONTROL: Skipping {stock.symbol} due to recent appearance.")
+                    continue
+
+            if not (stock.rank_score >= 3 and
+                    stock.daily_rank_delta >= 1 and
+                    stock.risk_score <= 3 and
+                    stock.is_volume_confirmed and
+                    stock.is_fundamental_ok):
+                logger.info(f"GENUINE STRENGTH FILTER: Skipping {stock.symbol} due to not meeting criteria.")
+                continue
+
+            top_10_list.append(stock)
+
+        for stock in top_10_list:
+            stock.last_top10_date = today
+            stock.top10_hit_count = (stock.top10_hit_count or 0) + 1
+        
+        session.commit()
+        
+        return top_10_list
+        
+    @staticmethod
     def process_single_batch(batch_tickers: list[str], batch_id: int, settings_obj, bhavcopy_df: pd.DataFrame) -> set[str]:
         logger.info(f"--- Starting Batch {batch_id} ---")
         qualified_symbols = set()
@@ -202,6 +350,16 @@ class StockFetcher:
                     try:
                         df_yf = yf.download(symbol, period="1y", progress=False, auto_adjust=True, timeout=10)
                         
+                        # Flatten MultiIndex columns if present (fix for yfinance returning (Price, Ticker) columns)
+                        if isinstance(df_yf.columns, pd.MultiIndex):
+                            df_yf.columns = df_yf.columns.get_level_values(0)
+                        
+                        # FIX: Remove duplicate columns (caused by flattening MultiIndex sometimes)
+                        df_yf = df_yf.loc[:, ~df_yf.columns.duplicated()]
+                        
+                        # FIX: Remove duplicate index dates (clean up yfinance data)
+                        df_yf = df_yf[~df_yf.index.duplicated(keep='last')]
+
                         symbol_without_suffix = symbol.split('.')[0]
                         daily_data_row = bhavcopy_df[bhavcopy_df['TckrSymb'] == symbol_without_suffix]
 
@@ -242,21 +400,21 @@ class StockFetcher:
                             logger.info(f"SKIP {symbol}: Price not near 52-week high.")
                             continue
 
-                        is_liquid, liq_reason = FraudDetector.relative_liquidity_check(df, settings_obj)
+                        is_liquid, liq_reason = RiskAndQualityAnalyzer.relative_liquidity_check(df, settings_obj)
                         if not is_liquid:
                             logger.info(f"SKIP {symbol}: {liq_reason}")
                             continue
 
-                        is_confirmed, vol_reason = FraudDetector.volume_confirmation(df, settings_obj)
+                        is_confirmed, vol_reason = RiskAndQualityAnalyzer.volume_confirmation(df, settings_obj)
                         if not is_confirmed:
                             logger.info(f"SKIP {symbol}: {vol_reason}")
                             continue
                             
                         if settings_obj.FUNDAMENTAL_CHECK_ENABLED:
-                            if not FraudDetector.deep_fundamental_check(symbol, settings_obj):
+                            if not RiskAndQualityAnalyzer.deep_fundamental_check(symbol, settings_obj):
                                 continue
 
-                        risk_score, risk_reasons = FraudDetector.calculate_risk_score(df, current_close, high_52)
+                        risk_score, risk_reasons = RiskAndQualityAnalyzer.calculate_risk_score(df, current_close, high_52)
                         logger.info(f"QUALIFIED: {symbol} | Price: {current_close:.2f} | Risk: {risk_score} ({', '.join(risk_reasons)})")
                         
                         high_date_idx = df['High'].idxmax()

@@ -1,5 +1,5 @@
 {
-  "snapshot_date": "2026-01-11",
+  "snapshot_date": "2026-01-26",
   "source": "NSE/BSE",
   "records": [
     {
@@ -353,6 +353,13 @@
       "tier": "TIER_1"
     },
     {
+      "isin": "INE0ALI01010",
+      "symbol": "ADVAIT",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
       "isin": "INE1B0W01010",
       "symbol": "ADVANCE",
       "exchange": "NSE",
@@ -570,7 +577,7 @@
       "tier": "TIER_1"
     },
     {
-      "isin": "INE298G01027",
+      "isin": "INE298G01035",
       "symbol": "AJMERA",
       "exchange": "NSE",
       "exchange_suffix": "NS",
@@ -747,6 +754,13 @@
     {
       "isin": "INE137C01018",
       "symbol": "ALPHAGEO",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE121R01077",
+      "symbol": "AMAGI",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -1326,6 +1340,13 @@
       "tier": "TIER_1"
     },
     {
+      "isin": "INE285H01022",
+      "symbol": "ATLANTAA",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
       "isin": "INE0Z4F01028",
       "symbol": "ATLANTAELE",
       "exchange": "NSE",
@@ -1377,13 +1398,6 @@
     {
       "isin": "INE898S01029",
       "symbol": "AURUM",
-      "exchange": "NSE",
-      "exchange_suffix": "NS",
-      "tier": "TIER_1"
-    },
-    {
-      "isin": "INE218C01016",
-      "symbol": "AUSOMENT",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -1452,13 +1466,6 @@
       "tier": "TIER_1"
     },
     {
-      "isin": "INE652Z01017",
-      "symbol": "AVROIND",
-      "exchange": "NSE",
-      "exchange_suffix": "NS",
-      "tier": "TIER_1"
-    },
-    {
       "isin": "INE488D01021",
       "symbol": "AVTNPL",
       "exchange": "NSE",
@@ -1489,6 +1496,13 @@
     {
       "isin": "INE238A01034",
       "symbol": "AXISBANK",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE555B01013",
+      "symbol": "AXISCADES",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -1886,13 +1900,6 @@
       "tier": "TIER_1"
     },
     {
-      "isin": "INE052T01013",
-      "symbol": "BESTAGRO",
-      "exchange": "NSE",
-      "exchange_suffix": "NS",
-      "tier": "TIER_1"
-    },
-    {
       "isin": "INE351Y01019",
       "symbol": "BETA",
       "exchange": "NSE",
@@ -1902,6 +1909,13 @@
     {
       "isin": "INE878K01010",
       "symbol": "BFINVEST",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE661I01014",
+      "symbol": "BGRENERGY",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -1923,6 +1937,13 @@
     {
       "isin": "INE474E01029",
       "symbol": "BHANDARI",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE05XR01022",
+      "symbol": "BHARATCOAL",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -2502,6 +2523,13 @@
       "tier": "TIER_1"
     },
     {
+      "isin": "INE281A01026",
+      "symbol": "CENTEXT",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
       "isin": "INE483A01010",
       "symbol": "CENTRALBK",
       "exchange": "NSE",
@@ -2987,6 +3015,13 @@
     {
       "isin": "INE278G01037",
       "symbol": "CYBERMEDIA",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE214A01019",
+      "symbol": "CYBERTECH",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -4805,13 +4840,6 @@
       "tier": "TIER_1"
     },
     {
-      "isin": "INE705X01026",
-      "symbol": "GOYALALUM",
-      "exchange": "NSE",
-      "exchange_suffix": "NS",
-      "tier": "TIER_1"
-    },
-    {
       "isin": "INE177H01039",
       "symbol": "GPIL",
       "exchange": "NSE",
@@ -5276,13 +5304,6 @@
     {
       "isin": "INE782E01017",
       "symbol": "HESTERBIO",
-      "exchange": "NSE",
-      "exchange_suffix": "NS",
-      "tier": "TIER_1"
-    },
-    {
-      "isin": "INE492A01029",
-      "symbol": "HEUBACHIND",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -7129,7 +7150,7 @@
       "tier": "TIER_1"
     },
     {
-      "isin": "INE237A01028",
+      "isin": "INE237A01036",
       "symbol": "KOTAKBANK",
       "exchange": "NSE",
       "exchange_suffix": "NS",
@@ -7850,13 +7871,6 @@
       "tier": "TIER_1"
     },
     {
-      "isin": "INE859Q01017",
-      "symbol": "MANAKALUCO",
-      "exchange": "NSE",
-      "exchange_suffix": "NS",
-      "tier": "TIER_1"
-    },
-    {
       "isin": "INE830Q01018",
       "symbol": "MANAKCOAT",
       "exchange": "NSE",
@@ -8111,6 +8125,13 @@
     {
       "isin": "INE912H01013",
       "symbol": "MBLINFRA",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE942G01012",
+      "symbol": "MCLEODRUSS",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -8634,15 +8655,15 @@
       "tier": "TIER_1"
     },
     {
-      "isin": "INE295D01020",
-      "symbol": "NACLIND",
+      "isin": "INE454M01024",
+      "symbol": "NAGAFERT",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
     },
     {
-      "isin": "INE454M01024",
-      "symbol": "NAGAFERT",
+      "isin": "INE245I01016",
+      "symbol": "NAGREEKCAP",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -8685,6 +8706,13 @@
     {
       "isin": "INE298J01013",
       "symbol": "NAM-INDIA",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE117Z01011",
+      "symbol": "NARMADA",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -10804,13 +10832,6 @@
       "tier": "TIER_1"
     },
     {
-      "isin": "INE927A01040",
-      "symbol": "ROLLT",
-      "exchange": "NSE",
-      "exchange_suffix": "NS",
-      "tier": "TIER_1"
-    },
-    {
       "isin": "INE294G01026",
       "symbol": "ROML",
       "exchange": "NSE",
@@ -11483,13 +11504,6 @@
       "tier": "TIER_1"
     },
     {
-      "isin": "INE807F01027",
-      "symbol": "SEQUENT",
-      "exchange": "NSE",
-      "exchange_suffix": "NS",
-      "tier": "TIER_1"
-    },
-    {
       "isin": "INE782X01033",
       "symbol": "SERVOTECH",
       "exchange": "NSE",
@@ -11506,6 +11520,13 @@
     {
       "isin": "INE878E01021",
       "symbol": "SETCO",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE0M4D01010",
+      "symbol": "SETL",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -11534,13 +11555,6 @@
     {
       "isin": "INE353H01010",
       "symbol": "SGL",
-      "exchange": "NSE",
-      "exchange_suffix": "NS",
-      "tier": "TIER_1"
-    },
-    {
-      "isin": "INE0M4D01010",
-      "symbol": "SGLTL",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -11833,6 +11847,13 @@
       "tier": "TIER_1"
     },
     {
+      "isin": "INE0A0S01028",
+      "symbol": "SIGMA",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
       "isin": "INE903U01023",
       "symbol": "SIGNATURE",
       "exchange": "NSE",
@@ -11959,7 +11980,7 @@
       "tier": "TIER_1"
     },
     {
-      "isin": "INE411D01015",
+      "isin": "INE411D01023",
       "symbol": "SKMEGGPROD",
       "exchange": "NSE",
       "exchange_suffix": "NS",
@@ -12134,6 +12155,13 @@
       "tier": "TIER_1"
     },
     {
+      "isin": "INE970N01027",
+      "symbol": "SPCENET",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
       "isin": "INE247M01014",
       "symbol": "SPECIALITY",
       "exchange": "NSE",
@@ -12241,6 +12269,13 @@
     {
       "isin": "INE802C01033",
       "symbol": "SSWL",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE0RYC01010",
+      "symbol": "STALLION",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -12395,6 +12430,13 @@
     {
       "isin": "INE287B01021",
       "symbol": "SUBROS",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE492A01029",
+      "symbol": "SUDARCOLOR",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -14045,6 +14087,13 @@
       "tier": "TIER_1"
     },
     {
+      "isin": "INE286H01012",
+      "symbol": "VISASTEEL",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
       "isin": "INE270I01022",
       "symbol": "VISHNU",
       "exchange": "NSE",
@@ -14068,6 +14117,13 @@
     {
       "isin": "INE526G01021",
       "symbol": "VIVIMEDLAB",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE807F01027",
+      "symbol": "VIYASH",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -14292,6 +14348,13 @@
     {
       "isin": "INE274F01020",
       "symbol": "WESTLIFE",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE082W01014",
+      "symbol": "WEWIN",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
