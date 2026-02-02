@@ -127,6 +127,43 @@ class TestRankingEngineIncrements:
         assert stock.rank_score <= app_settings.MAX_RANK
         #assert stock.rank_score == 7 # 6 + (4-1) -> capped at 7
 
+class TestNewRankingLogic:
+    def test_new_stock_rank_is_1_after_creation(self, db_session, app_settings):
+        engine_svc = RankingEngine(db_session, app_settings)
+        engine_svc.today = date(2025, 1, 1)
+
+        # This stock does not exist yet
+        engine_svc.update_ranking(
+            "NEWSTOCK",
+            100.0,
+            90.0, date(2024, 1, 10),
+            110.0, date(2025, 1, 1)
+        )
+
+        stock = db_session.query(MomentumStock).filter_by(symbol="NEWSTOCK").one()
+        assert stock.rank_score == 1
+        assert stock.last_seen_date == date(2025, 1, 1)
+
+    def test_existing_stock_rank_increments_correctly(self, db_session, app_settings):
+        engine_svc = RankingEngine(db_session, app_settings)
+        
+        # Day 1: Create the stock
+        engine_svc.today = date(2025, 1, 1)
+        create_stock(db_session, "EXISTING", 1, date(2025, 1, 1))
+
+        # Day 2: Update the stock
+        engine_svc.today = date(2025, 1, 2)
+        engine_svc.update_ranking(
+            "EXISTING",
+            105.0,
+            90.0, date(2024, 1, 10),
+            110.0, date(2025, 1, 1)
+        )
+
+        stock = db_session.query(MomentumStock).filter_by(symbol="EXISTING").one()
+        assert stock.rank_score == 2
+        assert stock.last_seen_date == date(2025, 1, 2)
+
 
 class TestTopMovers:
     def test_ordering_query_always_places_highest_movers_on_top(self, db_session, app_settings):

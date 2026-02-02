@@ -250,12 +250,11 @@ class RankingEngine:
         stock = self.session.execute(stmt).scalar_one_or_none()
         
         if not stock:
-            stock = MomentumStock(symbol=symbol, rank_score=0, last_seen_date=self.today)
+            stock = MomentumStock(symbol=symbol, rank_score=1, last_seen_date=self.today)
             self.session.add(stock)
-            logger.info(f"NEW STOCK: {symbol} created with initial rank 0.")
-        
-        # Only increment rank if the stock has not been seen today
-        if stock.last_seen_date < self.today:
+            logger.info(f"NEW STOCK: {symbol} created with initial rank 1.")
+        elif stock.last_seen_date < self.today:
+            # Only increment rank if the stock has not been seen today
             stock.rank_score = min((stock.rank_score or 0) + 1, self.settings.MAX_RANK)
         
         stock.current_price = price
