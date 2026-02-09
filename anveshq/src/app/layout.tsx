@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
-import { MainLayout } from "@/components/layout/MainLayout";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Sidebar } from "@/components/layout/Sidebar";
+
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Anveshq | Stock Market Intelligence",
-  description: "Professional-grade stock analysis and risk assessment.",
+  title: "Anveshq",
+  description: "Momentum stock screener and paper trading engine.",
 };
 
 export default function RootLayout({
@@ -14,8 +18,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">
-        <MainLayout>{children}</MainLayout>
+      <body
+        className={`${inter.className} bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-50`}
+      >
+        <TooltipProvider>
+          <div className="flex">
+            <aside className="w-64 p-4">
+              <Sidebar />
+            </aside>
+            <main className="flex-1 p-4">{children}</main>
+          </div>
+        </TooltipProvider>
       </body>
     </html>
   );

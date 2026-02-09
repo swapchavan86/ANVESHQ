@@ -245,7 +245,7 @@ class RankingEngine:
         self.settings = settings_obj
         self.today = datetime.datetime.now(zoneinfo.ZoneInfo(self.settings.TIMEZONE)).date()
 
-    def update_ranking(self, symbol: str, price: float, low_52_week_price: float, low_52_week_date: datetime.date, high_52_week_price: float, high_52_week_date: datetime.date):
+    def update_ranking(self, symbol: str, price: float, low_52_week_price: float, low_52_week_date: datetime.date, high_52_week_price: float, high_52_week_date: datetime.date, risk_score: int, is_volume_confirmed: bool, is_fundamental_ok: bool, rank_delta: int):
         stmt = select(MomentumStock).where(MomentumStock.symbol == symbol)
         stock = self.session.execute(stmt).scalar_one_or_none()
         
@@ -256,8 +256,10 @@ class RankingEngine:
         elif stock.last_seen_date < self.today:
             old_rank = stock.rank_score or 0
             stock.rank_score = min(old_rank + 1, self.settings.MAX_RANK)
+            stock.daily_rank_delta = stock.rank_score - old_rank
             logger.info(f"RANKING_UPDATE: INCREMENT {symbol}. Old rank: {old_rank}, New rank: {stock.rank_score}, Last seen: {stock.last_seen_date}, Today: {self.today}.")
         else:
+            stock.daily_rank_delta = 0
             logger.info(f"RANKING_UPDATE: NO CHANGE {symbol}. Rank: {stock.rank_score}, Last seen: {stock.last_seen_date}, Today: {self.today}.")
         
         stock.current_price = price
@@ -266,6 +268,9 @@ class RankingEngine:
         stock.high_52_week_price = high_52_week_price
         stock.high_52_week_date = high_52_week_date
         stock.last_seen_date = self.today
+        stock.risk_score = risk_score
+        stock.is_volume_confirmed = is_volume_confirmed
+        stock.is_fundamental_ok = is_fundamental_ok
 
     def decay_unseen_ranks(self, seen_symbols: set[str]):
         logger.info(f"Decaying ranks for all stocks not in today's seen list ({len(seen_symbols)} symbols)...")
@@ -431,7 +436,11 @@ class StockFetcher:
                             float(df['Low'].min()), 
                             low_date,
                             float(df['High'].max()), 
-                            high_date
+                            high_date,
+                            risk_score,
+                            is_confirmed,
+                            True, # is_fundamental_ok, will be properly implemented later
+                            0 # rank_delta, will be properly implemented later
                         )
                         qualified_symbols.add(symbol)
                     except Exception as e:

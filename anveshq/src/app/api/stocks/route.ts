@@ -11,7 +11,7 @@ export async function GET() {
       symbols.map(symbol => adapter.getQuote(symbol))
     );
     
-    return NextResponse.json(data);
+    return NextResponse.json({ stocks: data });
   } catch (error) {
     return NextResponse.json({ error: "Failed to fetch market data" }, { status: 500 });
   }

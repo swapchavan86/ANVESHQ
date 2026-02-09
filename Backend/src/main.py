@@ -1,6 +1,8 @@
 import sys
 import os
 import logging
+import datetime
+import zoneinfo
 
 # HACK: Add the root of the project to the path
 # to allow for relative imports
@@ -57,6 +59,11 @@ def main():
 
     # 2. Start Parallel Scanning
     StockFetcher.scan_stocks_parallel(tickers, batch_size=50, max_workers=10)
+
+    # 3. Get Top Movers with Repetition Control
+    with get_db_context() as session:
+        today = datetime.datetime.now(zoneinfo.ZoneInfo(current_settings.TIMEZONE)).date()
+        StockFetcher.get_top_movers_with_repetition_control(session, current_settings, today)
             
     logger.info("--- Fluxmind Engine Run Completed Successfully ---")
     os._exit(0)
