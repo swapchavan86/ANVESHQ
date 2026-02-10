@@ -6,6 +6,7 @@ import os
 import datetime
 import zipfile
 import json
+import re
 from src.config import get_settings
 
 logger = logging.getLogger("DataUtils")
@@ -72,27 +73,59 @@ class TickerLoader:
         bse_tickers = []
         try:
             logger.info(f"Fetching Tier 3 BSE List for expansion from: {url}")
-            response = requests.get(url, timeout=30)
+            response = session.get(url, timeout=30)
             response.raise_for_status()
-            
-            df = pd.read_csv(io.StringIO(response.content.decode('utf-8')), header=None)
-            
-            for _, row in df.iterrows():
+
+            df = pd.read_csv(io.StringIO(response.content.decode('utf-8')), dtype=str)
+            if not df.empty:
+                df.columns = [c.strip() for c in df.columns]
+                isin_col = TickerLoader._pick_column(df.columns, ["isin", "isinno", "isinnumber", "isincode"])
+                symbol_col = TickerLoader._pick_column(df.columns, ["symbol", "securityid", "scripid"])
+                code_col = TickerLoader._pick_column(df.columns, ["securitycode", "scripcode", "code"])
+
+                if isin_col and (symbol_col or code_col):
+                    selected_col = code_col or symbol_col
+                    for _, row in df.iterrows():
+                        isin = str(row.get(isin_col, "")).strip()
+                        if not isin or isin in nse_map:
+                            continue
+                        symbol_value = str(row.get(selected_col, "")).strip()
+                        if not symbol_value:
+                            continue
+                        if symbol_value.endswith(".0"):
+                            symbol_value = symbol_value[:-2]
+                        bse_tickers.append(f"{symbol_value}.BO")
+                    logger.info(f"Found {len(bse_tickers)} stocks exclusive to BSE for expansion.")
+                    return bse_tickers
+
+            logger.warning("BSE list does not expose expected columns. Falling back to heuristic parser.")
+            fallback_df = pd.read_csv(io.StringIO(response.content.decode('utf-8')), header=None, dtype=str)
+            for _, row in fallback_df.iterrows():
                 isin, scrip_code = None, None
                 for val in row.values:
-                    val_str = str(val)
-                    if val_str.startswith("INE") or val_str.startswith("INF"):
+                    val_str = str(val).strip()
+                    if not isin and (val_str.startswith("INE") or val_str.startswith("INF")):
                         isin = val_str
-                    elif val_str.isdigit() and len(val_str) == 6:
+                    elif not scrip_code and val_str.isdigit() and len(val_str) == 6:
                         scrip_code = val_str
-                
                 if isin and scrip_code and isin not in nse_map:
                     bse_tickers.append(f"{scrip_code}.BO")
-
             logger.info(f"Found {len(bse_tickers)} stocks exclusive to BSE for expansion.")
         except Exception as e:
             logger.warning(f"BSE Fetch (Tier 3) Failed: {e}")
         return bse_tickers
+
+    @staticmethod
+    def _normalize_column_name(name: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", name.strip().lower())
+
+    @staticmethod
+    def _pick_column(columns: list[str], candidates: list[str]) -> str | None:
+        normalized = {TickerLoader._normalize_column_name(c): c for c in columns}
+        for candidate in candidates:
+            if candidate in normalized:
+                return normalized[candidate]
+        return None
 
     @staticmethod
     def _load_from_json(json_path: str) -> list[str]:
@@ -209,6 +242,34 @@ class Bhavcopy:
         settings = get_settings()
         date_str = trade_date.strftime("%Y%m%d")
         return settings.BHAVCOPY_URL_TEMPLATE.format(date=date_str)
+
+    @staticmethod
+    def is_bhavcopy_available_for_date(trade_date: datetime.date, settings_obj=None) -> bool:
+        """
+        Checks if the Bhavcopy ZIP exists for a specific trading date.
+        Uses HEAD first and falls back to GET if the server blocks HEAD.
+        """
+        settings = settings_obj or get_settings()
+        if not getattr(settings, "BHAVCOPY_URL_TEMPLATE", None):
+            logger.warning("BHAVCOPY_URL_TEMPLATE is not configured.")
+            return False
+
+        date_str = trade_date.strftime("%Y%m%d")
+        url = settings.BHAVCOPY_URL_TEMPLATE.format(date=date_str)
+
+        try:
+            with requests.Session() as session:
+                session.headers.update(TickerLoader.get_headers())
+                head_resp = session.head(url, timeout=15, allow_redirects=True)
+                if head_resp.status_code == 200:
+                    return True
+                if head_resp.status_code in (403, 405):
+                    get_resp = session.get(url, timeout=15, stream=True, allow_redirects=True)
+                    return get_resp.status_code == 200
+                return False
+        except Exception as e:
+            logger.warning(f"Bhavcopy availability check failed for {trade_date}: {e}")
+            return False
 
     @staticmethod
     def download_and_extract_bhavcopy(url: str, session: requests.Session) -> pd.DataFrame:

@@ -22,6 +22,7 @@ class MomentumStock(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     symbol: Mapped[str] = mapped_column(String(20), unique=True, index=True)
+    company_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)  # From yfinance during scan
     
     # Core Logic Data
     rank_score: Mapped[int] = mapped_column(Integer, default=1)

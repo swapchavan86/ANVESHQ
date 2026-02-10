@@ -6,12 +6,18 @@ This process is designed to be run weekly to avoid daily dependencies on live, p
 data sources.
 """
 import os
+import sys
 import pandas as pd
 import requests
 import json
+import re
 from datetime import datetime
 from io import StringIO
 import logging
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
 from src.config import get_settings
 
 # Configure logging
@@ -22,19 +28,79 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'master')
 SNAPSHOT_FILENAME_TEMPLATE = "master-{}.json"
 LATEST_FILENAME = "master-latest.json"
 
-def get_bse_equity_list(url: str):
+def _normalize_column_name(name: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", name.strip().lower())
+
+
+def _pick_column(columns: list[str], candidates: list[str]) -> str | None:
+    normalized = {_normalize_column_name(c): c for c in columns}
+    for candidate in candidates:
+        if candidate in normalized:
+            return normalized[candidate]
+    return None
+
+
+def _extract_bse_rows_from_unstructured(df: pd.DataFrame) -> pd.DataFrame:
+    records = []
+    for _, row in df.iterrows():
+        isin = None
+        symbol = None
+        for val in row.values:
+            val_str = str(val).strip()
+            if not isin and (val_str.startswith("INE") or val_str.startswith("INF")):
+                isin = val_str
+            if not symbol and val_str.isdigit() and len(val_str) == 6:
+                symbol = val_str
+        if isin and symbol:
+            records.append({"isin": isin, "symbol": symbol})
+    return pd.DataFrame(records)
+
+
+def get_bse_equity_list(url: str) -> pd.DataFrame:
     """
-    Fetches the list of equity scrips from the BSE website.
-    This function will need to be implemented with a scraping library like BeautifulSoup
-    as the data is not available as a direct CSV download.
-    For now, it returns an empty DataFrame.
+    Fetches the list of equity scrips from the BSE source URL.
+    Returns a DataFrame with columns: isin, symbol
     """
-    logging.info("Fetching BSE CM list... (scrapping required, returning empty for now)")
-    # Placeholder for BSE scraping logic
-    # response = requests.get(url)
-    # soup = BeautifulSoup(response.content, 'html.parser')
-    # ... scraping logic ...
-    return pd.DataFrame(columns=['ISIN', 'Symbol', 'Security Name'])
+    if not url:
+        logging.warning("BSE_CM_CSV_URL is not configured. Skipping BSE source.")
+        return pd.DataFrame(columns=["isin", "symbol"])
+
+    logging.info(f"Fetching Tier 3 data from {url}")
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+
+        df = pd.read_csv(StringIO(response.text), dtype=str)
+        if df.empty:
+            logging.warning("BSE list returned no rows.")
+            return pd.DataFrame(columns=["isin", "symbol"])
+
+        df.columns = [c.strip() for c in df.columns]
+        isin_col = _pick_column(df.columns, ["isin", "isinno", "isinnumber", "isincode"])
+        symbol_col = _pick_column(df.columns, ["symbol", "securityid", "scripid"])
+        code_col = _pick_column(df.columns, ["securitycode", "scripcode", "code"])
+
+        if not isin_col or (not symbol_col and not code_col):
+            logging.warning("BSE list does not expose expected columns. Falling back to heuristic parser.")
+            fallback_df = pd.read_csv(StringIO(response.text), header=None, dtype=str)
+            return _extract_bse_rows_from_unstructured(fallback_df)
+
+        selected_col = code_col or symbol_col
+        bse_df = df[[isin_col, selected_col]].copy()
+        bse_df.rename(columns={isin_col: "isin", selected_col: "symbol"}, inplace=True)
+
+        bse_df["isin"] = bse_df["isin"].fillna("").astype(str).str.upper().str.strip()
+        bse_df["symbol"] = bse_df["symbol"].fillna("").astype(str).str.strip()
+
+        bse_df = bse_df[(bse_df["isin"] != "") & (bse_df["symbol"] != "")]
+        return bse_df
+    except requests.exceptions.RequestException as e:
+        logging.warning(f"Failed to fetch BSE list: {e}. Continuing without it.")
+        return pd.DataFrame(columns=["isin", "symbol"])
+    except Exception as e:
+        logging.warning(f"Failed to parse BSE list: {e}. Continuing without it.")
+        return pd.DataFrame(columns=["isin", "symbol"])
 
 
 def rootset_builder():
@@ -94,19 +160,36 @@ def rootset_builder():
         logging.info(f"Successfully fetched and processed {len(nifty_500_df)} Tier 2 records.")
     except requests.exceptions.RequestException as e:
         logging.warning(f"Failed to fetch NIFTY 500 list: {e}. Continuing without it.")
-        nifty_500_df = pd.DataFrame()
+        nifty_500_df = pd.DataFrame(columns=['isin', 'symbol', 'exchange', 'exchange_suffix', 'tier'])
 
     # --- Tier 3: BSE CM list ---
-    # This source is for expansion and is currently a placeholder.
-    # bse_df = get_bse_equity_list(settings.BSE_CM_CSV_URL) # Placeholder for now
-    bse_df = pd.DataFrame()
+    bse_df = get_bse_equity_list(settings.BSE_CM_CSV_URL)
+    if not bse_df.empty:
+        bse_df['exchange'] = 'BSE'
+        bse_df['exchange_suffix'] = 'BO'
+        bse_df['tier'] = 'TIER_3'
+        bse_df = bse_df[['isin', 'symbol', 'exchange', 'exchange_suffix', 'tier']]
+    else:
+        bse_df = pd.DataFrame(columns=['isin', 'symbol', 'exchange', 'exchange_suffix', 'tier'])
 
 
     # --- Combine and Deduplicate ---
     # The dataframes are concatenated, and duplicates are removed based on the ISIN,
     # which is the canonical identifier. Tier 1 is prioritized.
-    combined_df = pd.concat([nse_master_df, nifty_500_df], ignore_index=True)
-    combined_df.drop_duplicates(subset=['isin'], keep='first', inplace=True)
+    combined_df = pd.concat([nse_master_df, nifty_500_df, bse_df], ignore_index=True)
+
+    combined_df['isin'] = combined_df['isin'].fillna("").astype(str).str.upper().str.strip()
+    combined_df['symbol'] = combined_df['symbol'].fillna("").astype(str).str.strip()
+
+    combined_df['dedupe_key'] = combined_df['isin']
+    missing_isin = combined_df['dedupe_key'] == ""
+    combined_df.loc[missing_isin, 'dedupe_key'] = (
+        combined_df.loc[missing_isin, 'symbol'].str.upper()
+    )
+
+    combined_df = combined_df[combined_df['dedupe_key'] != ""]
+    combined_df.drop_duplicates(subset=['dedupe_key'], keep='first', inplace=True)
+    combined_df.drop(columns=['dedupe_key'], inplace=True)
     
     # Logic to add BSE stocks if they are not already present from NSE sources.
     if not bse_df.empty:
@@ -145,4 +228,3 @@ def rootset_builder():
 
 if __name__ == "__main__":
     rootset_builder()
-

@@ -13,3 +13,5 @@ python-multipart
 nsetools
 beautifulsoup4
 lxml
+matplotlib
+aiosmtpd

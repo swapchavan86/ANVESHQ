@@ -1,0 +1,55 @@
+name: 'Anveshq: Weekly Email Report'
+
+on:
+  schedule:
+    # Runs at 16:30 UTC every Sunday (22:00 IST)
+    - cron: '30 16 * * 0'
+  workflow_dispatch: # Allows manual trigger for testing
+
+jobs:
+  email-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        working-directory: Backend
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Email Report Engine
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL || '' }}
+          MODE: ${{ secrets.MODE }}
+          NSE_EQUITY_LIST_URL: ${{ secrets.NSE_EQUITY_LIST_URL }}
+          NSE_NIFTY500_CSV_URL: ${{ secrets.NSE_NIFTY500_CSV_URL }}
+          BSE_CM_CSV_URL: ${{ secrets.BSE_CM_CSV_URL }}
+          BHAVCOPY_URL_TEMPLATE: ${{ secrets.BHAVCOPY_URL_TEMPLATE }}
+          FUNDAMENTAL_CHECK_ENABLED: ${{ secrets.FUNDAMENTAL_CHECK_ENABLED }}
+          MIN_PRICE: ${{ secrets.MIN_PRICE }}
+          MIN_MCAP_CRORES: ${{ secrets.MIN_MCAP_CRORES }}
+          STREAK_THRESHOLD_DAYS: ${{ secrets.STREAK_THRESHOLD_DAYS }}
+          NEAR_52_WEEK_HIGH_THRESHOLD: ${{ secrets.NEAR_52_WEEK_HIGH_THRESHOLD }}
+          VOLUME_CONFIRMATION_FACTOR: ${{ secrets.VOLUME_CONFIRMATION_FACTOR }}
+          RELATIVE_LIQUIDITY_FACTOR: ${{ secrets.RELATIVE_LIQUIDITY_FACTOR }}
+          REPETITION_COOLDOWN_DAYS: ${{ secrets.REPETITION_COOLDOWN_DAYS }}
+          BREAKOUT_LOOKBACK_DAYS: ${{ secrets.BREAKOUT_LOOKBACK_DAYS }}
+          MAX_RANK: ${{ secrets.MAX_RANK }}
+          DECAY_FACTOR: ${{ secrets.DECAY_FACTOR }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST || 'smtp.gmail.com' }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT || '587' }}
+          SMTP_USE_SSL: ${{ secrets.SMTP_USE_SSL || 'false' }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          TO_EMAIL: ${{ secrets.TO_EMAIL }}
+        working-directory: Backend
+        run: |
+          python -m src.email_report

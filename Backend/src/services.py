@@ -20,6 +20,7 @@ import json
 import os
 import requests
 from bs4 import BeautifulSoup
+import math
 
 logger = logging.getLogger("Anveshq")
 logger.setLevel(logging.INFO)
@@ -245,9 +246,13 @@ class RankingEngine:
         self.settings = settings_obj
         self.today = datetime.datetime.now(zoneinfo.ZoneInfo(self.settings.TIMEZONE)).date()
 
-    def update_ranking(self, symbol: str, price: float, low_52_week_price: float, low_52_week_date: datetime.date, high_52_week_price: float, high_52_week_date: datetime.date, risk_score: int, is_volume_confirmed: bool, is_fundamental_ok: bool, rank_delta: int):
+    def update_ranking(self, symbol: str, price: float, low_52_week_price: float, low_52_week_date: datetime.date, high_52_week_price: float, high_52_week_date: datetime.date, risk_score: int, is_volume_confirmed: bool, is_fundamental_ok: bool, company_name: str | None = None):
         stmt = select(MomentumStock).where(MomentumStock.symbol == symbol)
         stock = self.session.execute(stmt).scalar_one_or_none()
+
+        if stock and stock.last_seen_date == self.today:
+            logger.info(f"RANKING_UPDATE: SKIP {symbol}. Already updated today.")
+            return False
         
         if not stock:
             stock = MomentumStock(symbol=symbol, rank_score=1, last_seen_date=self.today)
@@ -271,6 +276,9 @@ class RankingEngine:
         stock.risk_score = risk_score
         stock.is_volume_confirmed = is_volume_confirmed
         stock.is_fundamental_ok = is_fundamental_ok
+        if company_name is not None:
+            stock.company_name = company_name
+        return True
 
     def decay_unseen_ranks(self, seen_symbols: set[str]):
         logger.info(f"Decaying ranks for all stocks not in today's seen list ({len(seen_symbols)} symbols)...")
@@ -353,8 +361,24 @@ class StockFetcher:
         with get_db_context() as session:
             try:
                 engine_svc = RankingEngine(session, settings_obj)
+                try:
+                    existing_rows = session.execute(
+                        select(MomentumStock.symbol, MomentumStock.last_seen_date).where(
+                            MomentumStock.symbol.in_(batch_tickers)
+                        )
+                    ).all()
+                    existing_today_symbols = {
+                        sym for sym, last_seen in existing_rows if last_seen == engine_svc.today
+                    }
+                except Exception as e:
+                    logger.warning(f"Could not prefetch existing ranks for batch {batch_id}: {e}")
+                    existing_today_symbols = set()
                 for symbol in batch_tickers:
                     try:
+                        if symbol in existing_today_symbols:
+                            logger.info(f"SKIP {symbol}: already updated today (idempotent scan).")
+                            qualified_symbols.add(symbol)
+                            continue
                         df_yf = yf.download(symbol, period="1y", progress=False, auto_adjust=True, timeout=10)
                         
                         # Flatten MultiIndex columns if present (fix for yfinance returning (Price, Ticker) columns)
@@ -417,12 +441,21 @@ class StockFetcher:
                             logger.info(f"SKIP {symbol}: {vol_reason}")
                             continue
                             
-                        if settings_obj.FUNDAMENTAL_CHECK_ENABLED:
-                            if not RiskAndQualityAnalyzer.deep_fundamental_check(symbol, settings_obj):
-                                continue
+                        is_fundamental_ok = RiskAndQualityAnalyzer.deep_fundamental_check(symbol, settings_obj)
+                        if not is_fundamental_ok:
+                            continue
 
                         risk_score, risk_reasons = RiskAndQualityAnalyzer.calculate_risk_score(df, current_close, high_52)
                         logger.info(f"QUALIFIED: {symbol} | Price: {current_close:.2f} | Risk: {risk_score} ({', '.join(risk_reasons)})")
+                        
+                        company_name = None
+                        try:
+                            info = yf.Ticker(symbol).info
+                            company_name = (info.get("shortName") or info.get("longName")) if info else None
+                            if isinstance(company_name, str):
+                                company_name = company_name.strip() or None
+                        except Exception:
+                            pass
                         
                         high_date_idx = df['High'].idxmax()
                         high_date = high_date_idx.date() if isinstance(high_date_idx, pd.Timestamp) else high_date_idx
@@ -431,16 +464,16 @@ class StockFetcher:
                         low_date = low_date_idx.date() if isinstance(low_date_idx, pd.Timestamp) else low_date_idx
 
                         engine_svc.update_ranking(
-                            symbol, 
-                            current_close, 
-                            float(df['Low'].min()), 
+                            symbol,
+                            current_close,
+                            float(df['Low'].min()),
                             low_date,
-                            float(df['High'].max()), 
+                            float(df['High'].max()),
                             high_date,
                             risk_score,
                             is_confirmed,
-                            True, # is_fundamental_ok, will be properly implemented later
-                            0 # rank_delta, will be properly implemented later
+                            is_fundamental_ok,
+                            company_name=company_name,
                         )
                         qualified_symbols.add(symbol)
                     except Exception as e:
@@ -485,10 +518,27 @@ class StockFetcher:
             logger.warning("No tickers to scan. Aborting.")
             return
         logger.info(f"Starting Parallel Scan for {total} stocks...")
-        batches = [filtered_tickers[i:i + batch_size] for i in range(0, total, batch_size)]
+
+        base_batch_size = max(1, int(batch_size))
+        min_batches = 10
+        max_batches = 15
+        target_batches = math.ceil(total / base_batch_size)
+        target_batches = max(min_batches, target_batches)
+        target_batches = min(max_batches, target_batches, total)
+        effective_batch_size = math.ceil(total / target_batches)
+
+        logger.info(
+            f"Batching configuration: total={total}, batches={target_batches}, batch_size={effective_batch_size}"
+        )
+
+        batches = [
+            filtered_tickers[i:i + effective_batch_size]
+            for i in range(0, total, effective_batch_size)
+        ]
         current_settings = get_settings()
         all_qualified_symbols = set()
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        effective_workers = min(max_workers, len(batches))
+        with ThreadPoolExecutor(max_workers=effective_workers) as executor:
             future_to_batch = {executor.submit(StockFetcher.process_single_batch, batch, i+1, current_settings, bhavcopy_df): i for i, batch in enumerate(batches)}
             for future in as_completed(future_to_batch):
                 batch_num = future_to_batch[future] + 1
@@ -508,11 +558,48 @@ class StockFetcher:
 
 # --- CLASS 4: VALIDATOR ---
 class MarketValidator:
+    # Hardcoded list of market holidays for early-exit checks.
+    # This avoids making API calls on known holidays.
+    HOLIDAYS = [
+        date(2025, 1, 26), # Republic Day
+        date(2025, 3, 25), # Holi
+        date(2025, 4, 14), # Dr. Ambedkar Jayanti
+        date(2025, 4, 21), # Ram Navami
+        date(2025, 5, 1),  # Maharashtra Day
+        date(2025, 8, 15), # Independence Day
+        date(2025, 10, 2), # Gandhi Jayanti
+        date(2025, 11, 4), # Diwali
+        date(2025, 12, 25) # Christmas
+    ]
+
     @staticmethod
     def should_run(settings_obj) -> bool:
         tz = zoneinfo.ZoneInfo(settings_obj.TIMEZONE)
         now = datetime.datetime.now(tz)
-        if now.weekday() >= 5: return False
+        
+        # 1. Weekend Check
+        if now.weekday() >= 5: 
+            logger.info("Skipping run: It's a weekend.")
+            return False
+            
+        # 2. Hardcoded Holiday Check
+        if now.date() in MarketValidator.HOLIDAYS:
+            logger.info(f"Skipping run: Today ({now.date()}) is a known market holiday.")
+            return False
+
+        # 3. Bhavcopy Availability Check (as a proxy for market open)
+        try:
+            bhavcopy_available = Bhavcopy.is_bhavcopy_available_for_date(now.date(), settings_obj)
+            if not bhavcopy_available:
+                if settings_obj.MODE == "DEV":
+                    logger.warning("Bhavcopy not available for today. Proceeding in DEV mode.")
+                    return True
+                logger.info("Skipping run: Bhavcopy not available for today.")
+                return False
+        except Exception as e:
+            logger.error(f"Skipping run due to error checking Bhavcopy: {e}")
+            return False
+
         return True
 
     @staticmethod

@@ -1,5 +1,6 @@
 import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
 from typing import Optional
 from functools import lru_cache
 
@@ -51,6 +52,7 @@ class Settings(BaseSettings):
     BHAVCOPY_URL_TEMPLATE: str
 
     # --- Core Logic Settings ---
+    # Kept for backward compatibility; fundamental checks are always enforced in code.
     FUNDAMENTAL_CHECK_ENABLED: bool
     MIN_PRICE: float
     MIN_MCAP_CRORES: float
@@ -69,12 +71,29 @@ class Settings(BaseSettings):
     REPETITION_COOLDOWN_DAYS: int
     BREAKOUT_LOOKBACK_DAYS: int
     
+    # --- Email Report Settings (all from .env; switch provider by changing host/port/use_ssl) ---
+    SMTP_HOST: Optional[str] = "smtp.gmail.com"
+    SMTP_PORT: Optional[int] = 587
+    SMTP_USE_SSL: bool = False  # False = use STARTTLS (Gmail 587); True = implicit SSL (e.g. 465)
+    SMTP_USER: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    TO_EMAIL: Optional[str] = None
+
     model_config = SettingsConfigDict(
-        # For local development, read settings from a .env file at the project root.
-        env_file=os.path.join(_PROJECT_ROOT, 'Backend', '.env'), 
+        env_file=os.path.join(os.path.dirname(__file__), '..', '.env'),
         env_file_encoding="utf-8", 
         extra='ignore'
     )
+
+    @field_validator("MODE", mode="before")
+    @classmethod
+    def normalize_mode(cls, value):
+        if value is None:
+            return value
+        if isinstance(value, str):
+            cleaned = value.strip().strip('"').strip("'").upper()
+            return cleaned
+        return value
 
 @lru_cache
 def get_settings() -> Settings:
