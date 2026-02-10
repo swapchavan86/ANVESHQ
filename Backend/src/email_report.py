@@ -18,8 +18,16 @@ logger = logging.getLogger("Anveshq.EmailReport")
 
 def _display_name(stock: MomentumStock) -> str:
     """Company name if available, else symbol."""
-    name = getattr(stock, "company_name", None) or stock.symbol
-    return (name.strip() if isinstance(name, str) else stock.symbol)
+    raw_name = getattr(stock, "company_name", None)
+    if not isinstance(raw_name, str):
+        return stock.symbol
+    cleaned = raw_name.strip()
+    if not cleaned:
+        return stock.symbol
+    lowered = cleaned.lower()
+    if lowered in {"none", "null", "nan"}:
+        return stock.symbol
+    return cleaned
 
 
 def _google_search_url(symbol: str) -> str:
