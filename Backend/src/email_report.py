@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from src.database import get_db_context
 from src.models import MomentumStock
 from src.config import get_settings
+from src.yahoo_finance import get_ticker
 from sqlalchemy import select, desc, asc
 import datetime
 
@@ -50,6 +51,73 @@ def _format_inr(amount: float) -> str:
     return f"Rs. {result}.{dec}"
 
 
+_fundamental_cache: dict[str, dict] = {}
+
+
+def _get_fundamentals(symbol: str) -> dict:
+    if symbol in _fundamental_cache:
+        return _fundamental_cache[symbol]
+    try:
+        ticker = get_ticker(symbol)
+        info = ticker.info or {}
+        data = {
+            "marketCap": info.get("marketCap"),
+            "trailingPE": info.get("trailingPE"),
+            "debtToEquity": info.get("debtToEquity"),
+        }
+    except Exception:
+        data = {"marketCap": None, "trailingPE": None, "debtToEquity": None}
+    _fundamental_cache[symbol] = data
+    return data
+
+
+def _format_percent(value: float | None) -> str:
+    if value is None:
+        return "--"
+    return f"{value:.2f}%"
+
+
+def _format_numeric(value: float | int | None) -> str:
+    if value is None:
+        return "--"
+    if isinstance(value, float):
+        return f"{value:.2f}"
+    return str(value)
+
+
+def _build_metrics_html(stock: MomentumStock) -> str:
+    fundamentals = _get_fundamentals(stock.symbol)
+    current_price = getattr(stock, "current_price", None)
+    high_52 = getattr(stock, "high_52_week_price", None)
+    low_52 = getattr(stock, "low_52_week", None)
+
+    high_distance = None
+    low_distance = None
+    if current_price and high_52:
+        high_distance = ((current_price / high_52) - 1) * 100
+    if current_price and low_52:
+        low_distance = ((current_price / low_52) - 1) * 100
+
+    pe_ratio = fundamentals.get("trailingPE")
+    market_cap = fundamentals.get("marketCap")
+    debt_to_equity = fundamentals.get("debtToEquity")
+
+    market_cap_str = _format_inr(float(market_cap)) if isinstance(market_cap, (int, float)) else "--"
+    volume_status = "Yes" if getattr(stock, "is_volume_confirmed", False) else "No"
+
+    return f"""
+        <ul>
+            <li><strong>P/E Ratio:</strong> {_format_numeric(pe_ratio)}</li>
+            <li><strong>Market Cap:</strong> {market_cap_str}</li>
+            <li><strong>Debt/Equity:</strong> {_format_numeric(debt_to_equity)}</li>
+            <li><strong>Distance From 52-Week High:</strong> {_format_percent(high_distance)}</li>
+            <li><strong>Distance From 52-Week Low:</strong> {_format_percent(low_distance)}</li>
+            <li><strong>Risk Score:</strong> {_format_numeric(getattr(stock, "risk_score", None))}</li>
+            <li><strong>Volume Confirmed:</strong> {volume_status}</li>
+        </ul>
+    """
+
+
 # --- 1. DATA ENGINE ---
 def get_top_picks(session: Session, limit: int = 5) -> list[MomentumStock]:
     """
@@ -61,23 +129,25 @@ def get_top_picks(session: Session, limit: int = 5) -> list[MomentumStock]:
     ).limit(limit)
     return session.execute(stmt).scalars().all()
 
-def get_missed_opportunity(session: Session) -> MomentumStock | None:
+def get_missed_opportunities(session: Session, exclude_symbols: set[str], limit: int = 5) -> list[MomentumStock]:
     """
-    Finds a stock that had a significant rally in the past week.
-    This is a simplified example. A real implementation would need more complex logic.
+    Finds stocks with strong recent moves in the past week that are not in top picks.
     """
-    # For this example, let's find a stock with a high rank that wasn't a top pick last week
-    # This logic can be improved.
     one_week_ago = datetime.date.today() - datetime.timedelta(days=7)
     stmt = select(MomentumStock).filter(MomentumStock.last_seen_date >= one_week_ago).order_by(
         desc(MomentumStock.daily_rank_delta),
         desc(MomentumStock.rank_score)
-    ).limit(10) # Look at top 10 recent movers
-    
+    ).limit(50)
+
     candidates = session.execute(stmt).scalars().all()
-    # Find one that wasn't in the top 5 last week - this is tricky without historical data
-    # For now, just return the top one.
-    return candidates[0] if candidates else None
+    results: list[MomentumStock] = []
+    for stock in candidates:
+        if stock.symbol in exclude_symbols:
+            continue
+        results.append(stock)
+        if len(results) >= limit:
+            break
+    return results
 
 def calculate_roi(symbol: str) -> float | None:
     """
@@ -108,12 +178,13 @@ def calculate_roi(symbol: str) -> float | None:
         return None
 
 # --- 2. EMAIL CONTENT BUILDER ---
-def generate_email_html(top_picks: list[MomentumStock], missed_opportunity: MomentumStock | None, roi: float | None) -> str:
+
+def generate_email_html(top_picks: list[MomentumStock], missed_opportunities: list[MomentumStock], roi_map: dict[str, float | None]) -> str:
     """
     Builds the HTML content for the weekly email report (no graphs).
     Uses company name when available, current price in Rs., and Google search links.
     """
-    
+
     html = """
     <html>
     <head>
@@ -154,48 +225,47 @@ def generate_email_html(top_picks: list[MomentumStock], missed_opportunity: Mome
     for stock in top_picks:
         name = _display_name(stock)
         url = _google_search_url(stock.symbol)
-        price_str = _format_inr(stock.current_price) if stock.current_price is not None else "—"
-        insight = f"Strong momentum with a rank of {stock.rank_score}. "
-        if stock.is_volume_confirmed:
-            insight += "Volume confirmation suggests a healthy trend."
-        else:
-            insight += "Volume is not confirming the trend, proceed with caution."
+        price_str = _format_inr(stock.current_price) if stock.current_price is not None else "--"
         html += f"""
         <div class="stock-card">
             <div class="stock-info">
                 <div class="stock-name"><a href="{url}" target="_blank" rel="noopener">{name}</a></div>
                 <div class="stock-price">Current price: {price_str}</div>
-                <div class="stock-insight">"{insight}"</div>
+                <div class="stock-insight">Key fundamentals and technicals:</div>
+                {_build_metrics_html(stock)}
             </div>
         </div>
         """
 
     html += "</div>"
-    
-    if missed_opportunity and roi is not None:
-        roi_val = float(roi)
-        total_amount = 100000 * (1 + roi_val / 100)
-        name = _display_name(missed_opportunity)
-        url = _google_search_url(missed_opportunity.symbol)
-        price_str = _format_inr(missed_opportunity.current_price) if missed_opportunity.current_price is not None else "—"
-        missed_insight = "This stock showed a significant rally last week. "
-        if missed_opportunity.high_52_week_price and missed_opportunity.current_price:
-            if missed_opportunity.current_price > missed_opportunity.high_52_week_price * 0.95:
-                missed_insight += "It broke past its 52-week high."
-        html += f"""
+
+    if missed_opportunities:
+        html += """
             <div class="section">
-                <h2 class="section-title">The Opportunity You Might Have Missed</h2>
+                <h2 class="section-title">Opportunities You Might Have Missed</h2>
+        """
+        for stock in missed_opportunities:
+            name = _display_name(stock)
+            url = _google_search_url(stock.symbol)
+            price_str = _format_inr(stock.current_price) if stock.current_price is not None else "--"
+            roi_val = roi_map.get(stock.symbol)
+            roi_line = ""
+            if roi_val is not None:
+                total_amount = 100000 * (1 + float(roi_val) / 100)
+                roi_line = f"<div><strong>Weekly ROI:</strong> {float(roi_val):.2f}%. 1L Rs. would become <strong>{_format_inr(total_amount)}</strong></div>"
+            html += f"""
                 <div class="stock-card">
                     <div class="stock-info">
                         <div class="stock-name"><a href="{url}" target="_blank" rel="noopener">{name}</a></div>
                         <div class="stock-price">Current price: {price_str}</div>
-                        <div class="stock-insight">"{missed_insight}"</div>
-                        <div><strong>Weekly ROI:</strong> {roi_val:.2f}%. 1L Rs. would become <strong>{_format_inr(total_amount)}</strong></div>
+                        <div class="stock-insight">Key fundamentals and technicals:</div>
+                        {_build_metrics_html(stock)}
+                        {roi_line}
                     </div>
                 </div>
-            </div>
-        """
-        
+            """
+        html += "</div>"
+
     # --- FOOTER & DISCLAIMER ---
     html += """
             <div class="disclaimer">
@@ -205,9 +275,8 @@ def generate_email_html(top_picks: list[MomentumStock], missed_opportunity: Mome
     </body>
     </html>
     """
-    
-    return html
 
+    return html
 
 # --- 3. EMAIL SENDER ---
 def send_email(html_content: str) -> bool:
@@ -276,9 +345,10 @@ def run_report() -> None:
     logger.info("Generating weekly email report...")
     with get_db_context() as session:
         top_picks = get_top_picks(session)
-        missed_opportunity = get_missed_opportunity(session)
-        roi = calculate_roi(missed_opportunity.symbol) if missed_opportunity else None
-        html_content = generate_email_html(top_picks, missed_opportunity, roi)
+        exclude = {s.symbol for s in top_picks}
+        missed_opportunities = get_missed_opportunities(session, exclude_symbols=exclude, limit=5)
+        roi_map = {s.symbol: calculate_roi(s.symbol) for s in missed_opportunities}
+        html_content = generate_email_html(top_picks, missed_opportunities, roi_map)
         send_email(html_content)
     logger.info("Report generation complete.")
 
