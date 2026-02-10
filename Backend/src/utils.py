@@ -272,6 +272,23 @@ class Bhavcopy:
             return False
 
     @staticmethod
+    def find_latest_available_date(start_date: datetime.date, settings_obj=None, max_lookback_days: int = 7) -> datetime.date | None:
+        """
+        Finds the most recent date (including start_date) where Bhavcopy is available.
+        Skips weekends and looks back up to max_lookback_days.
+        """
+        if max_lookback_days < 1:
+            return None
+
+        for offset in range(max_lookback_days):
+            candidate = start_date - datetime.timedelta(days=offset)
+            if candidate.weekday() >= 5:
+                continue
+            if Bhavcopy.is_bhavcopy_available_for_date(candidate, settings_obj):
+                return candidate
+        return None
+
+    @staticmethod
     def download_and_extract_bhavcopy(url: str, session: requests.Session) -> pd.DataFrame:
         """Downloads and extracts the Bhavcopy CSV."""
         logger.info(f"Fetching Bhavcopy from: {url}")

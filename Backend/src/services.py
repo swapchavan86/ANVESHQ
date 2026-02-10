@@ -589,13 +589,19 @@ class MarketValidator:
 
         # 3. Bhavcopy Availability Check (as a proxy for market open)
         try:
-            bhavcopy_available = Bhavcopy.is_bhavcopy_available_for_date(now.date(), settings_obj)
-            if not bhavcopy_available:
+            latest_bhavcopy_date = Bhavcopy.find_latest_available_date(
+                now.date(), settings_obj, max_lookback_days=7
+            )
+            if latest_bhavcopy_date is None:
                 if settings_obj.MODE == "DEV":
-                    logger.warning("Bhavcopy not available for today. Proceeding in DEV mode.")
+                    logger.warning("Bhavcopy not available in the last 7 days. Proceeding in DEV mode.")
                     return True
-                logger.info("Skipping run: Bhavcopy not available for today.")
+                logger.info("Skipping run: Bhavcopy not available in the last 7 days.")
                 return False
+            if latest_bhavcopy_date != now.date():
+                logger.warning(
+                    f"Bhavcopy not available for today. Using latest available date: {latest_bhavcopy_date}."
+                )
         except Exception as e:
             logger.error(f"Skipping run due to error checking Bhavcopy: {e}")
             return False
