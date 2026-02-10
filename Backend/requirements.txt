@@ -6,6 +6,9 @@ pydantic-settings
 pandas
 python-dotenv
 requests
+requests-cache
+requests-ratelimiter
+pyrate-limiter
 pytest
 fastapi
 uvicorn
