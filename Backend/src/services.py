@@ -46,10 +46,15 @@ class RiskAndQualityAnalyzer:
         """
         Scrapes Google Finance for key fundamentals as a fallback.
         """
-        if not symbol.endswith(".NS"):
-            return None # Only handle NSE stocks for now
-            
-        google_symbol = symbol.replace(".NS", "") + ":NSE"
+        exchange = None
+        if symbol.endswith(".NS"):
+            exchange = "NSE"
+        elif symbol.endswith(".BO"):
+            exchange = "BOM"
+        else:
+            return None
+
+        google_symbol = symbol.replace(".NS", "").replace(".BO", "") + f":{exchange}"
         url = f"https://www.google.com/finance/quote/{google_symbol}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
