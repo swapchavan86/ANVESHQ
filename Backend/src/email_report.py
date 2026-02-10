@@ -4,6 +4,7 @@ import ssl
 import urllib.parse
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
 import yfinance as yf
 import pandas as pd
 from sqlalchemy.orm import Session
@@ -14,6 +15,9 @@ from src.yahoo_finance import get_ticker
 from src.services import RiskAndQualityAnalyzer
 from sqlalchemy import select, desc, asc
 import datetime
+import os
+from functools import lru_cache
+import json
 
 logger = logging.getLogger("Anveshq.EmailReport")
 
@@ -93,6 +97,113 @@ def _parse_number(value) -> float | None:
     return None
 
 
+def _parse_market_cap_value(value) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if not isinstance(value, str):
+        return None
+
+    text = value.strip().upper()
+    if not text:
+        return None
+
+    for token in ("RS.", "RS", "INR", "₹"):
+        text = text.replace(token, "")
+    text = text.replace(",", "").replace(" ", "")
+
+    multiplier = 1.0
+    if "CRORE" in text or text.endswith("CR") or "CR" in text:
+        multiplier = 10_000_000
+    elif "LAKH" in text or text.endswith("L") or "LAC" in text:
+        multiplier = 100_000
+    elif "TRILLION" in text or text.endswith("T"):
+        multiplier = 1e12
+    elif "BILLION" in text or text.endswith("B"):
+        multiplier = 1e9
+    elif "MILLION" in text or text.endswith("M"):
+        multiplier = 1e6
+
+    number_part = ""
+    for ch in text:
+        if ch.isdigit() or ch == ".":
+            number_part += ch
+        elif number_part:
+            break
+    try:
+        return float(number_part) * multiplier if number_part else None
+    except Exception:
+        return None
+
+
+def _dedupe_lines(lines: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for line in lines:
+        if line in seen:
+            continue
+        seen.add(line)
+        result.append(line)
+    return result
+
+
+@lru_cache(maxsize=1)
+def _load_fundamentals_cache() -> dict:
+    cache_path = os.path.join(os.path.dirname(__file__), "..", "fundamentals_cache.json")
+    if not os.path.exists(cache_path):
+        return {}
+    try:
+        with open(cache_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _get_cached_fundamentals(symbol: str) -> dict:
+    cache = _load_fundamentals_cache()
+    keys = [symbol]
+    if symbol.endswith(".NS") or symbol.endswith(".BO"):
+        keys.append(symbol.replace(".NS", "").replace(".BO", ""))
+    else:
+        keys.append(f"{symbol}.NS")
+        keys.append(f"{symbol}.BO")
+    for key in keys:
+        entry = cache.get(key)
+        if isinstance(entry, dict):
+            info = entry.get("info")
+            if isinstance(info, dict):
+                return info
+    return {}
+
+
+def _combined_ma_ema_lines(
+    price_above_20: bool | None,
+    price_above_50: bool | None,
+    price_above_ema20: bool | None,
+    price_above_ema50: bool | None,
+    ma_text: str,
+    ema_text: str,
+) -> list[str]:
+    if all(
+        value is not None
+        for value in (price_above_20, price_above_50, price_above_ema20, price_above_ema50)
+    ):
+        if price_above_20 and price_above_50 and price_above_ema20 and price_above_ema50:
+            return ["Price is trading above 20 and 50 day simple and exponential moving averages."]
+        if (price_above_20 is False) and (price_above_50 is False) and (price_above_ema20 is False) and (price_above_ema50 is False):
+            return ["Price is trading below 20 and 50 day simple and exponential moving averages."]
+    lines = []
+    if ma_text != "Simple moving average data is unavailable.":
+        lines.append(ma_text)
+    if ema_text != "Exponential moving average data is unavailable.":
+        lines.append(ema_text)
+    if not lines:
+        lines.append("Moving average data is unavailable.")
+    return lines
+
+
 def _get_nse_quote(symbol: str) -> dict | None:
     if not symbol.endswith(".NS"):
         return None
@@ -101,14 +212,36 @@ def _get_nse_quote(symbol: str) -> dict | None:
     try:
         from nsetools import Nse
     except Exception:
-        return None
+        Nse = None
 
     try:
-        nse = Nse()
-        quote = nse.get_quote(symbol.replace(".NS", ""))
-        if isinstance(quote, dict):
-            _nse_quote_cache[symbol] = quote
-            return quote
+        if Nse is not None:
+            nse = Nse()
+            quote = nse.get_quote(symbol.replace(".NS", ""))
+            if isinstance(quote, dict):
+                _nse_quote_cache[symbol] = quote
+                return quote
+    except Exception:
+        quote = None
+
+    try:
+        import requests
+        session = requests.Session()
+        base_url = "https://www.nseindia.com"
+        symbol_clean = symbol.replace(".NS", "")
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json,text/plain,*/*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": f"https://www.nseindia.com/get-quotes/equity?symbol={symbol_clean}",
+        }
+        session.get(base_url, headers=headers, timeout=10)
+        resp = session.get(f"{base_url}/api/quote-equity?symbol={symbol_clean}", headers=headers, timeout=10)
+        if resp.ok:
+            data = resp.json()
+            if isinstance(data, dict):
+                _nse_quote_cache[symbol] = data
+                return data
     except Exception:
         return None
     return None
@@ -126,10 +259,11 @@ def _get_fundamentals(symbol: str, current_price: float | None = None) -> dict:
         info = {}
 
     market_cap = info.get("marketCap")
-    pe_ratio = info.get("trailingPE") or info.get("forwardPE")
+    pe_ratio = info.get("trailingPE") or info.get("forwardPE") or info.get("priceEpsCurrentYear")
     debt_to_equity = info.get("debtToEquity")
     shares_outstanding = info.get("sharesOutstanding") or info.get("shares")
-    trailing_eps = info.get("trailingEps") or info.get("epsTrailingTwelveMonths")
+    trailing_eps = info.get("trailingEps") or info.get("epsTrailingTwelveMonths") or info.get("epsCurrentYear")
+    sector = info.get("sector") or info.get("industry") or info.get("industryDisp")
 
     fast_info = None
     if ticker is not None:
@@ -154,6 +288,15 @@ def _get_fundamentals(symbol: str, current_price: float | None = None) -> dict:
         if trailing_eps is None:
             trailing_eps = fast_info.get("eps") or fast_info.get("trailingEps")
 
+    cached_info = _get_cached_fundamentals(symbol)
+    if cached_info:
+        market_cap = market_cap or cached_info.get("marketCap")
+        pe_ratio = pe_ratio or cached_info.get("trailingPE") or cached_info.get("forwardPE") or cached_info.get("priceEpsCurrentYear")
+        debt_to_equity = debt_to_equity or cached_info.get("debtToEquity")
+        shares_outstanding = shares_outstanding or cached_info.get("sharesOutstanding") or cached_info.get("floatShares")
+        trailing_eps = trailing_eps or cached_info.get("trailingEps") or cached_info.get("epsTrailingTwelveMonths") or cached_info.get("epsCurrentYear")
+        sector = sector or cached_info.get("sector") or cached_info.get("industry") or cached_info.get("industryDisp")
+
     if market_cap is None or pe_ratio is None:
         try:
             fallback = RiskAndQualityAnalyzer.get_fundamentals_from_google_finance(symbol)
@@ -163,17 +306,60 @@ def _get_fundamentals(symbol: str, current_price: float | None = None) -> dict:
         except Exception:
             pass
 
-    if (market_cap is None or pe_ratio is None or debt_to_equity is None) and symbol.endswith(".NS"):
+    if (market_cap is None or pe_ratio is None or debt_to_equity is None or not sector):
+        try:
+            direct_info = yf.Ticker(symbol).get_info()
+            if isinstance(direct_info, dict):
+                market_cap = market_cap or direct_info.get("marketCap")
+                pe_ratio = pe_ratio or direct_info.get("trailingPE") or direct_info.get("forwardPE")
+                debt_to_equity = debt_to_equity or direct_info.get("debtToEquity")
+                sector = sector or direct_info.get("sector") or direct_info.get("industry")
+        except Exception:
+            pass
+
+    if (market_cap is None or pe_ratio is None or debt_to_equity is None or not sector) and symbol.endswith(".NS"):
         quote = _get_nse_quote(symbol)
         if quote:
+            info_block = quote.get("info") if isinstance(quote.get("info"), dict) else {}
+            metadata_block = quote.get("metadata") if isinstance(quote.get("metadata"), dict) else {}
+            price_info = quote.get("priceInfo") if isinstance(quote.get("priceInfo"), dict) else {}
             if market_cap is None:
-                market_cap = _parse_number(
-                    quote.get("marketCapFull") or quote.get("marketCap") or quote.get("marketCapValue")
+                market_cap = _parse_market_cap_value(
+                    quote.get("marketCapFull")
+                    or quote.get("marketCap")
+                    or quote.get("marketCapValue")
+                    or quote.get("marketCapitalisation")
+                    or metadata_block.get("marketCap")
+                    or info_block.get("marketCap")
                 )
             if pe_ratio is None:
-                pe_ratio = _parse_number(quote.get("pE") or quote.get("pe") or quote.get("priceEarnings"))
+                pe_ratio = _parse_number(
+                    quote.get("pE")
+                    or quote.get("pe")
+                    or quote.get("priceEarnings")
+                    or metadata_block.get("pE")
+                    or metadata_block.get("pe")
+                    or price_info.get("pE")
+                    or price_info.get("pe")
+                )
             if debt_to_equity is None:
-                debt_to_equity = _parse_number(quote.get("debtEquity") or quote.get("debtToEquity"))
+                debt_to_equity = _parse_number(
+                    quote.get("debtEquity")
+                    or quote.get("debtToEquity")
+                    or metadata_block.get("debtToEquity")
+                    or info_block.get("debtToEquity")
+                )
+            if not sector:
+                sector = (
+                    quote.get("industry")
+                    or quote.get("industryName")
+                    or quote.get("sector")
+                    or quote.get("sectorName")
+                    or info_block.get("industry")
+                    or info_block.get("sector")
+                    or info_block.get("industryCategory")
+                    or info_block.get("industryGroup")
+                )
 
     if shares_outstanding is None and ticker is not None:
         try:
@@ -253,6 +439,7 @@ def _get_fundamentals(symbol: str, current_price: float | None = None) -> dict:
         "marketCap": market_cap,
         "trailingPE": pe_ratio,
         "debtToEquity": debt_to_equity,
+        "sector": sector,
     }
     _fundamental_cache[symbol] = data
     return data
@@ -388,6 +575,71 @@ def _exchange_label(symbol: str) -> str:
     return "NSE/BSE"
 
 
+def _symbol_short(symbol: str) -> str:
+    return symbol.replace(".NS", "").replace(".BO", "")
+
+
+def _cap_band(market_cap: float | None) -> str:
+    if market_cap is None:
+        return "CAP DATA UNAVAILABLE"
+    # Market cap is in rupees. Convert to crores for thresholds.
+    cap_cr = market_cap / 10_000_000
+    if cap_cr >= 20000:
+        return "LARGE CAP"
+    if cap_cr >= 5000:
+        return "MID CAP"
+    return "SMALL CAP"
+
+
+def _format_market_cap(market_cap: float | None) -> str | None:
+    if market_cap is None:
+        return None
+    try:
+        cap_cr = float(market_cap) / 10_000_000
+    except Exception:
+        return None
+    return f"Rs. {cap_cr:,.2f} Cr"
+
+
+def _format_value_html(value: str | None, na_text: str = "--") -> str:
+    if value is None or value == "--":
+        return f'<div class="value data-na">{na_text}</div>'
+    return f'<div class="value">{value}</div>'
+
+
+def _derive_target_stoploss(current: float | None, resistance: float | None, support: float | None, high_52: float | None, low_52: float | None) -> tuple[float | None, float | None]:
+    target = None
+    stop = None
+
+    if current is not None:
+        if resistance is not None and resistance > current * 1.01:
+            target = resistance
+        elif high_52 is not None and high_52 > current * 1.01:
+            target = high_52
+        else:
+            target = current * 1.05
+
+        if support is not None and support < current * 0.99:
+            stop = support
+        elif low_52 is not None and low_52 < current * 0.99:
+            stop = low_52
+        else:
+            stop = current * 0.95
+
+    return target, stop
+
+
+def _format_rr_ratio(current: float | None, target: float | None, stop: float | None) -> str:
+    if current is None or target is None or stop is None:
+        return "--"
+    reward = target - current
+    risk = current - stop
+    if reward <= 0 or risk <= 0:
+        return "--"
+    ratio = reward / risk
+    return f"1:{ratio:.2f}"
+
+
 def _rsi_comment(rsi: float | None) -> str:
     if rsi is None:
         return "RSI data is unavailable."
@@ -398,7 +650,7 @@ def _rsi_comment(rsi: float | None) -> str:
     return f"RSI is at {rsi:.1f}, indicating weak momentum."
 
 
-def _build_stock_card_html(stock: MomentumStock, roi_value: float | None = None) -> str:
+def _build_top_pick_card_html(stock: MomentumStock) -> str:
     snapshot = _get_market_snapshot(stock.symbol)
     current_price = snapshot.get("current_price") or getattr(stock, "current_price", None)
     fundamentals = _get_fundamentals(stock.symbol, current_price=current_price)
@@ -406,14 +658,17 @@ def _build_stock_card_html(stock: MomentumStock, roi_value: float | None = None)
     name = _display_name(stock)
     exchange = _exchange_label(stock.symbol)
     url = _google_search_url(stock.symbol)
+    symbol_short = _symbol_short(stock.symbol)
 
-    current_price = snapshot.get("current_price") or getattr(stock, "current_price", None)
     day_change = snapshot.get("day_change_pct")
+    support = snapshot.get("support")
+    resistance = snapshot.get("resistance")
 
     ma20 = snapshot.get("ma20")
     ma50 = snapshot.get("ma50")
     ema20 = snapshot.get("ema20")
     ema50 = snapshot.get("ema50")
+
     price_above_20 = current_price is not None and ma20 is not None and current_price > ma20
     price_above_50 = current_price is not None and ma50 is not None and current_price > ma50
 
@@ -437,75 +692,332 @@ def _build_stock_card_html(stock: MomentumStock, roi_value: float | None = None)
     else:
         ema_text = "Exponential moving average data is unavailable."
 
-    volume = snapshot.get("volume")
-    avg_volume = snapshot.get("avg_volume_20")
     volume_delta = snapshot.get("volume_vs_avg_pct")
-    if volume is not None and avg_volume is not None and avg_volume > 0 and volume_delta is not None:
-        if volume_delta >= 20:
-            volume_text = f"Volume is {_format_signed_percent(volume_delta)} above the 20 day average."
-        elif volume_delta <= -20:
-            volume_text = f"Volume is {_format_signed_percent(volume_delta)} below the 20 day average."
-        else:
-            volume_text = "Volume is near the 20 day average."
+    if volume_delta is not None:
+        volume_text = f"Volume is {_format_signed_percent(volume_delta)} vs the 20 day average."
     else:
         volume_text = "Volume data is unavailable."
 
-    support = snapshot.get("support")
-    resistance = snapshot.get("resistance")
+    rsi_text = _rsi_comment(snapshot.get("rsi"))
     support_text = f"Immediate support zone observed near {_format_price(support)}." if support else "Support data is unavailable."
     resistance_text = f"Near-term resistance zone observed around {_format_price(resistance)}." if resistance else "Resistance data is unavailable."
-
-    rsi_text = _rsi_comment(snapshot.get("rsi"))
 
     pe_ratio = fundamentals.get("trailingPE")
     market_cap = fundamentals.get("marketCap")
     debt_to_equity = fundamentals.get("debtToEquity")
-    market_cap_str = _format_inr(float(market_cap)) if isinstance(market_cap, (int, float)) else "--"
+    market_cap_str = _format_market_cap(market_cap) or "--"
 
     high_52 = snapshot.get("high_52") or getattr(stock, "high_52_week_price", None)
     low_52 = snapshot.get("low_52") or getattr(stock, "low_52_week", None)
     high_52_date = snapshot.get("high_52_date") or getattr(stock, "high_52_week_date", None)
     low_52_date = snapshot.get("low_52_date") or getattr(stock, "low_52_week_date", None)
+    high_52_date_str = _format_date(high_52_date)
+    low_52_date_str = _format_date(low_52_date)
+    high_52_date_html = f'<small style="color: #64748b;">on {high_52_date_str}</small>' if high_52_date_str != "--" else ""
+    low_52_date_html = f'<small style="color: #64748b;">on {low_52_date_str}</small>' if low_52_date_str != "--" else ""
 
-    market_view = "The stock is currently showing strength on the daily timeframe."
-    if not (price_above_20 and price_above_50) or (snapshot.get("rsi") is not None and snapshot.get("rsi") < 50):
-        market_view = "The stock is showing mixed signals on the daily timeframe."
+    sector = fundamentals.get("sector") or "Unknown Sector"
+    sector_name = sector.split(" - ")[0].split("/")[0].strip() if isinstance(sector, str) else "Unknown Sector"
+    if not sector_name:
+        sector_name = "Unknown Sector"
+    category = f"{sector_name} - {_cap_band(market_cap)}".upper()
 
-    roi_line = ""
-    if roi_value is not None:
-        total_amount = 100000 * (1 + float(roi_value) / 100)
-        roi_line = f"<div><strong>Weekly ROI:</strong> {float(roi_value):.2f}%. 1L Rs. would become <strong>{_format_inr(total_amount)}</strong></div>"
+    target_price, stop_loss = _derive_target_stoploss(current_price, resistance, support, high_52, low_52)
+    rr_ratio = _format_rr_ratio(current_price, target_price, stop_loss)
+    time_horizon = "3-6 months"
+    rr_text = "Data not available"
+    if rr_ratio != "--":
+        rr_text = f"Approximately {rr_ratio} based on historical patterns"
+
+    ma_ema_lines = _combined_ma_ema_lines(
+        price_above_20, price_above_50, price_above_ema20, price_above_ema50, ma_text, ema_text
+    )
+    observation_points = _dedupe_lines(
+        ma_ema_lines
+        + [
+            rsi_text,
+            volume_text,
+            support_text,
+            resistance_text,
+        ]
+    )
 
     return f"""
-        <div class="stock-card">
-            <div class="stock-info">
-                <div class="stock-name"><a href="{url}" target="_blank" rel="noopener">Stock: {name} ({exchange})</a></div>
-                <div class="stock-insight">Market Snapshot:</div>
-                <ul>
-                    <li><strong>Current Price:</strong> {_format_price(current_price)}</li>
-                    <li><strong>Day Change:</strong> {_format_signed_percent(day_change)}</li>
-                    <li><strong>P/E Ratio:</strong> {_format_numeric(pe_ratio)}</li>
-                    <li><strong>Market Cap:</strong> {market_cap_str}</li>
-                    <li><strong>Debt/Equity:</strong> {_format_numeric(debt_to_equity)}</li>
-                    <li><strong>52-Week High:</strong> {_format_price(high_52)} on {_format_date(high_52_date)}</li>
-                    <li><strong>52-Week Low:</strong> {_format_price(low_52)} on {_format_date(low_52_date)}</li>
-                </ul>
-                <div class="stock-insight">Technical Observations:</div>
-                <ul>
-                    <li>{ma_text}</li>
-                    <li>{ema_text}</li>
-                    <li>{rsi_text}</li>
-                    <li>{volume_text}</li>
-                    <li>{support_text}</li>
-                    <li>{resistance_text}</li>
-                </ul>
-                <div class="stock-insight">Market View:</div>
-                <div>{market_view} Traders and investors may review this setup as part of their own independent analysis and risk assessment.</div>
-                {roi_line}
-            </div>
+      <div class="stock-card">
+        <div class="stock-header">
+          <h3 class="stock-name"><a href="{url}" target="_blank" rel="noopener">{name} ({symbol_short})</a></h3>
+          <span class="stock-category">{category}</span>
         </div>
+
+        <table role="presentation" class="metrics-table" width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td class="metric-cell">
+              <div class="metric-box cmp">
+                <div class="metric-label">Current Level</div>
+                <div class="metric-value">{_format_price(current_price)}</div>
+              </div>
+            </td>
+            <td class="metric-cell">
+              <div class="metric-box target">
+                <div class="metric-label">Observed Target</div>
+                <div class="metric-value">{_format_price(target_price)}</div>
+              </div>
+            </td>
+            <td class="metric-cell">
+              <div class="metric-box stop-loss">
+                <div class="metric-label">Risk Level</div>
+                <div class="metric-value">{_format_price(stop_loss)}</div>
+              </div>
+            </td>
+          </tr>
+        </table>
+
+        <div class="analyst-section">
+          <div class="analyst-label">Research Observations</div>
+          <div class="analyst-content">
+            <p>Based on our analysis of publicly available data, we've identified several factors worth monitoring:</p>
+            <ul>
+              {"".join(f"<li>{item}</li>" for item in observation_points[:6])}
+            </ul>
+          </div>
+          <div class="info-box">
+            <p><strong>Observation Period:</strong> {time_horizon} | <strong>Potential Risk-Reward:</strong> {rr_text}</p>
+          </div>
+        </div>
+      </div>
     """
 
+def _build_technical_card_html(stock: MomentumStock, roi_value: float | None = None) -> str:
+    snapshot = _get_market_snapshot(stock.symbol)
+    current_price = snapshot.get("current_price") or getattr(stock, "current_price", None)
+    fundamentals = _get_fundamentals(stock.symbol, current_price=current_price)
+
+    name = _display_name(stock)
+    exchange = _exchange_label(stock.symbol)
+
+    day_change = snapshot.get("day_change_pct")
+    support = snapshot.get("support")
+    resistance = snapshot.get("resistance")
+
+    pe_ratio = fundamentals.get("trailingPE")
+    market_cap = fundamentals.get("marketCap")
+    market_cap_str = _format_market_cap(market_cap)
+
+    high_52 = snapshot.get("high_52") or getattr(stock, "high_52_week_price", None)
+    low_52 = snapshot.get("low_52") or getattr(stock, "low_52_week", None)
+    high_52_date = snapshot.get("high_52_date") or getattr(stock, "high_52_week_date", None)
+    low_52_date = snapshot.get("low_52_date") or getattr(stock, "low_52_week_date", None)
+    high_52_date_str = _format_date(high_52_date)
+    low_52_date_str = _format_date(low_52_date)
+    high_52_date_html = f'<small style="color: #64748b;">on {high_52_date_str}</small>' if high_52_date_str != "--" else ""
+    low_52_date_html = f'<small style="color: #64748b;">on {low_52_date_str}</small>' if low_52_date_str != "--" else ""
+
+    ma20 = snapshot.get("ma20")
+    ma50 = snapshot.get("ma50")
+    ema20 = snapshot.get("ema20")
+    ema50 = snapshot.get("ema50")
+
+    price_above_20 = current_price is not None and ma20 is not None and current_price > ma20
+    price_above_50 = current_price is not None and ma50 is not None and current_price > ma50
+
+    if price_above_20 and price_above_50:
+        ma_text = "Price is trading above 20 and 50 day simple moving averages."
+    elif price_above_20 and not price_above_50:
+        ma_text = "Price is trading above the 20 day simple moving average but below the 50 day simple moving average."
+    elif (price_above_20 is False) and (price_above_50 is False):
+        ma_text = "Price is trading below 20 and 50 day simple moving averages."
+    else:
+        ma_text = "Simple moving average data is unavailable."
+
+    price_above_ema20 = current_price is not None and ema20 is not None and current_price > ema20
+    price_above_ema50 = current_price is not None and ema50 is not None and current_price > ema50
+    if price_above_ema20 and price_above_ema50:
+        ema_text = "Price is trading above 20 and 50 day exponential moving averages."
+    elif price_above_ema20 and not price_above_ema50:
+        ema_text = "Price is trading above the 20 day exponential moving average but below the 50 day exponential moving average."
+    elif (price_above_ema20 is False) and (price_above_ema50 is False):
+        ema_text = "Price is trading below 20 and 50 day exponential moving averages."
+    else:
+        ema_text = "Exponential moving average data is unavailable."
+
+    volume_delta = snapshot.get("volume_vs_avg_pct")
+    if volume_delta is not None:
+        volume_text = f"Volume is {_format_signed_percent(volume_delta)} vs the 20 day average."
+    else:
+        volume_text = "Volume data is unavailable."
+
+    rsi_text = _rsi_comment(snapshot.get("rsi"))
+    support_text = f"Immediate support zone observed near {_format_price(support)}." if support else "Support data is unavailable."
+    resistance_text = f"Near-term resistance zone observed around {_format_price(resistance)}." if resistance else "Resistance data is unavailable."
+
+    ma_signal = "signal-neutral"
+    ma_label = "Mixed"
+    if price_above_20 and price_above_50:
+        ma_signal = "signal-bullish"
+        ma_label = "Uptrend"
+    elif (price_above_20 is False) and (price_above_50 is False):
+        ma_signal = "signal-bearish"
+        ma_label = "Downtrend"
+    elif price_above_20 is None or price_above_50 is None:
+        ma_signal = "signal-warning"
+        ma_label = "Data Missing"
+
+    ema_signal = "signal-neutral"
+    ema_label = "Transition"
+    if price_above_ema20 and price_above_ema50:
+        ema_signal = "signal-bullish"
+        ema_label = "Bullish"
+    elif (price_above_ema20 is False) and (price_above_ema50 is False):
+        ema_signal = "signal-bearish"
+        ema_label = "Bearish"
+    elif price_above_ema20 is None or price_above_ema50 is None:
+        ema_signal = "signal-warning"
+        ema_label = "Data Missing"
+
+    rsi_value = snapshot.get("rsi")
+    rsi_signal = "signal-neutral"
+    rsi_label = "Neutral"
+    if rsi_value is None:
+        rsi_signal = "signal-warning"
+        rsi_label = "Data Missing"
+    elif rsi_value >= 60:
+        rsi_signal = "signal-bullish"
+        rsi_label = "Bullish"
+    elif rsi_value < 45:
+        rsi_signal = "signal-bearish"
+        rsi_label = "Bearish"
+
+    volume_signal = "signal-neutral"
+    volume_label = "Neutral"
+    if volume_delta is None:
+        volume_signal = "signal-warning"
+        volume_label = "Data Missing"
+    elif volume_delta >= 0:
+        volume_signal = "signal-bullish"
+        volume_label = "Strong Interest"
+    else:
+        volume_signal = "signal-warning"
+        volume_label = "Low Conviction"
+
+    summary_signal = "mixed technical signals"
+    if rsi_value is not None and price_above_20 and price_above_50:
+        summary_signal = "multiple bullish technical indicators"
+    elif rsi_value is not None and (price_above_20 is False) and (price_above_50 is False):
+        summary_signal = "bearish technical signals"
+
+    ma_ema_items: list[tuple[str, str, str]] = []
+    if all(
+        value is not None
+        for value in (price_above_20, price_above_50, price_above_ema20, price_above_ema50)
+    ):
+        if price_above_20 and price_above_50 and price_above_ema20 and price_above_ema50:
+            ma_ema_items = [
+                ("Price is trading above 20 and 50 day simple and exponential moving averages.", "signal-bullish", "Uptrend")
+            ]
+        elif (price_above_20 is False) and (price_above_50 is False) and (price_above_ema20 is False) and (price_above_ema50 is False):
+            ma_ema_items = [
+                ("Price is trading below 20 and 50 day simple and exponential moving averages.", "signal-bearish", "Downtrend")
+            ]
+
+    if not ma_ema_items:
+        if ma_text != "Simple moving average data is unavailable.":
+            ma_ema_items.append((ma_text, ma_signal, ma_label))
+        if ema_text != "Exponential moving average data is unavailable.":
+            ma_ema_items.append((ema_text, ema_signal, ema_label))
+        if not ma_ema_items:
+            ma_ema_items = [("Moving average data is unavailable.", "signal-warning", "Data Missing")]
+
+    if day_change is None:
+        day_change_html = _format_value_html(_format_signed_percent(day_change))
+    else:
+        day_class = "price-change-positive" if day_change >= 0 else "price-change-negative"
+        day_change_html = f'<div class="value {day_class}">{_format_signed_percent(day_change)}</div>'
+
+    return f"""
+      <div class="technical-card">
+        <div class="technical-header">
+          <h3 class="technical-title">{name}</h3>
+          <span class="technical-exchange">{exchange}</span>
+        </div>
+
+        <table role="presentation" class="price-info-table" width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td class="price-info-cell">
+              <div class="price-info-item">
+                <strong>Last Traded Price</strong>
+                {_format_value_html(_format_price(current_price))}
+              </div>
+            </td>
+            <td class="price-info-cell">
+              <div class="price-info-item">
+                <strong>Daily Change</strong>
+                {day_change_html}
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="price-info-cell">
+              <div class="price-info-item">
+                <strong>52-Week High</strong>
+                {_format_value_html(_format_price(high_52))}
+                {high_52_date_html}
+              </div>
+            </td>
+            <td class="price-info-cell">
+              <div class="price-info-item">
+                <strong>52-Week Low</strong>
+                {_format_value_html(_format_price(low_52))}
+                {low_52_date_html}
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="price-info-cell">
+              <div class="price-info-item">
+                <strong>P/E Ratio</strong>
+                {_format_value_html(_format_numeric(pe_ratio))}
+              </div>
+            </td>
+            <td class="price-info-cell">
+              <div class="price-info-item">
+                <strong>Market Cap</strong>
+                {_format_value_html(market_cap_str)}
+              </div>
+            </td>
+          </tr>
+        </table>
+
+        <div class="technical-section">
+          <div class="technical-section-title">Technical Indicators to Study</div>
+          <ul class="technical-observations">
+            {"".join(f"<li>{item} <span class=\"signal-badge {sig}\">{label}</span></li>" for item, sig, label in ma_ema_items)}
+            <li>{rsi_text} <span class="signal-badge {rsi_signal}">{rsi_label}</span></li>
+            <li>{volume_text} <span class="signal-badge {volume_signal}">{volume_label}</span></li>
+          </ul>
+        </div>
+
+        <div class="key-levels">
+          <div class="key-levels-title">Key Price Levels to Monitor</div>
+          <div class="key-levels-grid">
+            <div class="key-level-item">
+              <strong>Support Zone</strong>
+              <span class="level-value">{_format_price(support)}</span>
+            </div>
+            <div class="key-level-item">
+              <strong>Resistance Zone</strong>
+              <span class="level-value">{_format_price(resistance)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="educational-note">
+          <div class="educational-note-title">What This Means</div>
+          <p class="educational-note-content">
+            The stock shows <strong>{summary_signal}</strong>. Use these signals as a learning reference and verify with your own analysis. Always manage risk appropriately.
+          </p>
+        </div>
+      </div>
+    """
 
 # --- 1. DATA ENGINE ---
 def get_top_picks(session: Session, limit: int = 5) -> list[MomentumStock]:
@@ -574,70 +1086,66 @@ def generate_email_html(top_picks: list[MomentumStock], missed_opportunities: li
     Uses company name when available, current price in Rs., and Google search links.
     """
 
-    html = """
-    <html>
-    <head>
-        <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; }
-            .container { max-width: 800px; margin: auto; padding: 20px; background-color: #f9f9f9; }
-            .header { background-color: #4CAF50; color: white; padding: 10px; text-align: center; }
-            .section { margin-top: 20px; }
-            .section-title { font-size: 20px; color: #4CAF50; border-bottom: 2px solid #4CAF50; padding-bottom: 5px; }
-            .stock-card { border: 1px solid #ddd; padding: 15px; margin-top: 15px; }
-            .stock-info { }
-            .stock-name { font-size: 24px; font-weight: bold; }
-            .stock-name a { color: #1565c0; text-decoration: none; }
-            .stock-name a:hover { text-decoration: underline; }
-            .stock-price { color: #333; margin-top: 4px; }
-            .stock-insight { font-style: italic; color: #555; margin-top: 8px; }
-            .disclaimer { font-size: 12px; color: #777; margin-top: 30px; text-align: center; }
-            @media (prefers-color-scheme: dark) {
-                body { background-color: #121212; color: #eee; }
-                .container { background-color: #1e1e1e; }
-                .stock-card { border-color: #444; }
-                .stock-insight { color: #aaa; }
-                .stock-name a { color: #42a5f5; }
-                .header { background-color: #5cb85c; }
-                .section-title { color: #5cb85c; border-bottom-color: #5cb85c; }
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1>Anveshq Weekly Insights</h1>
-            </div>
-            <div class="section">
-                <h2 class="section-title">Top Picks for Next Week</h2>
-    """
-
-    for stock in top_picks:
-        html += _build_stock_card_html(stock)
-
-    html += "</div>"
-
-    if missed_opportunities:
-        html += """
-            <div class="section">
-                <h2 class="section-title">Opportunities You Might Have Missed</h2>
-        """
-        for stock in missed_opportunities:
-            roi_val = roi_map.get(stock.symbol)
-            html += _build_stock_card_html(stock, roi_value=roi_val)
-        html += "</div>"
-
-    # --- FOOTER & DISCLAIMER ---
-    html += """
-            <div class="disclaimer">
-                <p><strong>Disclaimer:</strong> This content is for informational purposes only and does not constitute investment advice.</p>
-                <p>This analysis is auto-generated using publicly available market data. No personalized investment recommendation is provided.</p>
-            </div>
+    top_cards = "\n".join(_build_top_pick_card_html(stock) for stock in top_picks)
+    watchlist_section = ""
+    if top_cards:
+        watchlist_section = f"""
+        <div class="section">
+          <h2 class="section-header">
+            Stocks on Our Research Watchlist
+            <span class="educational-badge">For Educational Purposes</span>
+          </h2>
+          {top_cards}
         </div>
-    </body>
-    </html>
-    """
+        """
 
-    return html
+    technical_cards = ""
+    if missed_opportunities:
+        technical_cards = "\n".join(
+            _build_technical_card_html(stock, roi_value=roi_map.get(stock.symbol))
+            for stock in missed_opportunities
+        )
+    else:
+        technical_cards = '<p class="data-na">No patterns met the screening criteria this week. We will continue monitoring and share new observations as they emerge.</p>'
+
+    technical_section = f"""
+        <div class="section">
+          <h2 class="section-header">
+            Opportunities You Might Have Missed
+            <span class="educational-badge">Learning Resource</span>
+          </h2>
+          {technical_cards}
+        </div>
+        """
+
+    template = _load_email_template()
+    week_of = datetime.date.today().strftime("%b %d, %Y")
+    subtitle = f"Independent research and technical analysis for learning - Week of {week_of}"
+    return (
+        template.replace("{{TITLE}}", "Weekly Market Research Newsletter")
+        .replace("{{SUBTITLE}}", subtitle)
+        .replace("{{WATCHLIST_SECTION}}", watchlist_section)
+        .replace("{{TECHNICAL_SECTION}}", technical_section)
+        .replace("{{LOGO_BLOCK}}", _get_logo_block())
+    )
+
+
+@lru_cache(maxsize=1)
+def _load_email_template() -> str:
+    template_path = os.path.join(os.path.dirname(__file__), "..", "templates", "email_report.html")
+    with open(template_path, "r", encoding="utf-8") as f:
+        return f.read()
+
+@lru_cache(maxsize=1)
+def _get_logo_path() -> str | None:
+    logo_path = os.path.join(os.path.dirname(__file__), "..", "templates", "anveshq_logo.png")
+    return logo_path if os.path.exists(logo_path) else None
+
+@lru_cache(maxsize=1)
+def _get_logo_block() -> str:
+    if _get_logo_path():
+        return '<img src="cid:anveshq_logo" alt="Anveshq" class="logo-image" />'
+    return '<div class="header-title">Anveshq</div>'
 
 # --- 3. EMAIL SENDER ---
 def send_email(html_content: str) -> bool:
@@ -676,7 +1184,21 @@ def send_email(html_content: str) -> bool:
     message["Subject"] = f"Anveshq Weekly Report - {datetime.date.today()}"
     message["From"] = sender_email
     message["To"] = receiver_email
-    message.attach(MIMEText(html_content, "html"))
+
+    alternative = MIMEMultipart("alternative")
+    alternative.attach(MIMEText(html_content, "html"))
+    message.attach(alternative)
+
+    logo_path = _get_logo_path()
+    if logo_path:
+        try:
+            with open(logo_path, "rb") as img:
+                logo = MIMEImage(img.read())
+            logo.add_header("Content-ID", "<anveshq_logo>")
+            logo.add_header("Content-Disposition", "inline", filename="anveshq_logo.png")
+            message.attach(logo)
+        except Exception:
+            logger.warning("Logo attachment failed; continuing without inline image.")
 
     try:
         if use_ssl:
@@ -707,8 +1229,64 @@ def run_report() -> None:
     with get_db_context() as session:
         top_picks = get_top_picks(session)
         exclude = {s.symbol for s in top_picks}
-        missed_opportunities = get_missed_opportunities(session, exclude_symbols=exclude, limit=5)
-        roi_map = {s.symbol: calculate_roi(s.symbol) for s in missed_opportunities}
+        candidates = get_missed_opportunities(session, exclude_symbols=exclude, limit=100)
+        settings = get_settings()
+        missed_opportunities: list[MomentumStock] = []
+        roi_map: dict[str, float | None] = {}
+        max_missed = 4
+
+        def try_add_opportunities(require_near_high: bool, require_positive_roi: bool, allow_missing_roi: bool) -> None:
+            for stock in candidates:
+                if stock in missed_opportunities:
+                    continue
+                if stock.rank_score is not None and stock.rank_score < 3:
+                    continue
+                if stock.daily_rank_delta is not None and stock.daily_rank_delta < 1:
+                    continue
+                if stock.risk_score is not None and stock.risk_score > 3:
+                    continue
+                if stock.is_fundamental_ok is False:
+                    continue
+                if stock.is_volume_confirmed is False:
+                    continue
+
+                snapshot = _get_market_snapshot(stock.symbol)
+                current_price = snapshot.get("current_price") or stock.current_price
+                high_52 = snapshot.get("high_52") or stock.high_52_week_price
+                if require_near_high and current_price and high_52:
+                    if current_price < (high_52 * settings.NEAR_52_WEEK_HIGH_THRESHOLD):
+                        continue
+
+                roi = calculate_roi(stock.symbol)
+                if roi is None and not allow_missing_roi:
+                    continue
+                if require_positive_roi and roi < 0:
+                    continue
+
+                missed_opportunities.append(stock)
+                roi_map[stock.symbol] = roi
+                if len(missed_opportunities) >= max_missed:
+                    return
+
+        # Pass 1: strict (near 52-week high + positive ROI)
+        try_add_opportunities(require_near_high=True, require_positive_roi=True, allow_missing_roi=False)
+        # Pass 2: relax near-high requirement
+        if len(missed_opportunities) < max_missed:
+            try_add_opportunities(require_near_high=False, require_positive_roi=True, allow_missing_roi=False)
+        # Pass 3: allow negative ROI if still empty
+        if len(missed_opportunities) < max_missed:
+            try_add_opportunities(require_near_high=False, require_positive_roi=False, allow_missing_roi=True)
+        # Pass 4: ensure at least a few technical cards for the email
+        if not missed_opportunities and candidates:
+            for stock in candidates:
+                if stock.symbol in exclude:
+                    continue
+                if stock in missed_opportunities:
+                    continue
+                missed_opportunities.append(stock)
+                roi_map[stock.symbol] = calculate_roi(stock.symbol)
+                if len(missed_opportunities) >= min(2, max_missed):
+                    break
         html_content = generate_email_html(top_picks, missed_opportunities, roi_map)
         send_email(html_content)
     logger.info("Report generation complete.")

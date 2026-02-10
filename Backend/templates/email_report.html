@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>{{TITLE}}</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      background-color: #f8f9fb;
+      color: #1e293b;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    table {
+      border-spacing: 0;
+      border-collapse: collapse;
+    }
+
+    img {
+      border: 0;
+      display: block;
+      max-width: 100%;
+      height: auto;
+    }
+
+    .email-wrapper {
+      width: 100%;
+      background-color: #f8f9fb;
+      padding: 0;
+    }
+
+    .email-container {
+      width: 100%;
+      max-width: 100%;
+      margin: 0 auto;
+      background-color: #ffffff;
+      border-radius: 0;
+      overflow: hidden;
+      box-shadow: none;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      padding: 32px 32px 28px;
+      text-align: center;
+      position: relative;
+    }
+
+    .logo-container {
+      margin-bottom: 20px;
+    }
+
+    .logo-image {
+      max-width: 280px;
+      height: auto;
+      margin: 0 auto;
+    }
+
+    .header-title {
+      color: #ffffff;
+      font-size: 24px;
+      font-weight: 600;
+      margin: 16px 0 8px;
+      line-height: 1.3;
+    }
+
+    .header-subtitle {
+      color: #cbd5e1;
+      font-size: 14px;
+      font-weight: 400;
+      line-height: 1.5;
+    }
+
+    .content {
+      padding: 36px 32px;
+    }
+
+    .section {
+      margin-bottom: 36px;
+    }
+
+    .section:last-child {
+      margin-bottom: 0;
+    }
+
+    .section-header {
+      font-size: 20px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    .educational-badge {
+      display: inline-block;
+      background: #fef3c7;
+      color: #92400e;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+
+    .stock-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 24px;
+      margin-bottom: 20px;
+      transition: all 0.3s ease;
+    }
+
+    .stock-card:hover {
+      border-color: #3b82f6;
+      box-shadow: 0 8px 20px rgba(59, 130, 246, 0.12);
+    }
+
+    .stock-card:last-child {
+      margin-bottom: 0;
+    }
+
+    .stock-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .stock-name {
+      font-size: 20px;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0;
+      text-decoration: none;
+    }
+
+    .stock-name a {
+      color: #0f172a;
+      text-decoration: none;
+    }
+
+    .stock-name a:hover {
+      color: #3b82f6;
+    }
+
+    .stock-category {
+      display: inline-block;
+      background: #eff6ff;
+      color: #2563eb;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      margin-top: 8px;
+    }
+
+    .metrics-table {
+      width: 100%;
+      margin: 20px 0;
+    }
+
+    .metric-cell {
+      width: 33.33%;
+      padding: 0 6px;
+      vertical-align: top;
+    }
+
+    .metric-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 14px 12px;
+      text-align: center;
+    }
+
+    .metric-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #64748b;
+      margin-bottom: 6px;
+    }
+
+    .metric-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .metric-box.cmp {
+      border-left: 3px solid #6366f1;
+    }
+
+    .metric-box.target {
+      border-left: 3px solid #10b981;
+      background: #f0fdf4;
+    }
+
+    .metric-box.target .metric-value {
+      color: #059669;
+    }
+
+    .metric-box.stop-loss {
+      border-left: 3px solid #ef4444;
+      background: #fef2f2;
+    }
+
+    .metric-box.stop-loss .metric-value {
+      color: #dc2626;
+    }
+
+    .analyst-section {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid #e2e8f0;
+    }
+
+    .analyst-label {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #64748b;
+      margin-bottom: 10px;
+    }
+
+    .analyst-content {
+      font-size: 14px;
+      line-height: 1.7;
+      color: #475569;
+    }
+
+    .analyst-content ul {
+      margin: 8px 0;
+      padding-left: 20px;
+    }
+
+    .analyst-content li {
+      margin-bottom: 6px;
+    }
+
+    .info-box {
+      background: #f1f5f9;
+      border-left: 4px solid #3b82f6;
+      border-radius: 6px;
+      padding: 16px;
+      margin-top: 16px;
+    }
+
+    .info-box p {
+      font-size: 13px;
+      line-height: 1.6;
+      color: #475569;
+      margin: 0;
+    }
+
+    .technical-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 24px;
+      margin-bottom: 20px;
+      transition: all 0.3s ease;
+    }
+
+    .technical-card:hover {
+      border-color: #8b5cf6;
+      box-shadow: 0 8px 20px rgba(139, 92, 246, 0.12);
+    }
+
+    .technical-card:last-child {
+      margin-bottom: 0;
+    }
+
+    .technical-header {
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid #f1f5f9;
+    }
+
+    .technical-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #5b21b6;
+      margin: 0 0 8px;
+    }
+
+    .technical-exchange {
+      display: inline-block;
+      background: #f3e8ff;
+      color: #6b21a8;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 4px 10px;
+      border-radius: 12px;
+    }
+
+    .price-info-table {
+      width: 100%;
+      margin-bottom: 20px;
+      padding: 16px;
+      background: #fafbfc;
+      border-radius: 8px;
+    }
+
+    .price-info-cell {
+      width: 50%;
+      padding: 6px;
+      vertical-align: top;
+    }
+
+    .price-info-item {
+      font-size: 13px;
+      color: #475569;
+      line-height: 1.6;
+    }
+
+    .price-info-item strong {
+      color: #1e293b;
+      font-weight: 600;
+      display: block;
+      margin-bottom: 2px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .price-info-item .value {
+      font-size: 15px;
+      font-weight: 600;
+      color: #0f172a;
+    }
+
+    .price-change-positive {
+      color: #059669 !important;
+    }
+
+    .price-change-negative {
+      color: #dc2626 !important;
+    }
+
+    .data-na {
+      color: #94a3b8;
+      font-style: italic;
+      font-size: 13px;
+    }
+
+    .technical-section {
+      margin-bottom: 20px;
+    }
+
+    .technical-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .technical-section-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #64748b;
+      margin-bottom: 12px;
+    }
+
+    .technical-observations {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .technical-observations li {
+      font-size: 13px;
+      line-height: 1.7;
+      color: #475569;
+      margin-bottom: 10px;
+      padding-left: 20px;
+      position: relative;
+    }
+
+    .technical-observations li:before {
+      content: "->";
+      position: absolute;
+      left: 0;
+      color: #8b5cf6;
+      font-weight: 700;
+    }
+
+    .signal-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 10px;
+      margin-left: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .signal-bullish {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .signal-bearish {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .signal-neutral {
+      background: #e0e7ff;
+      color: #3730a3;
+    }
+
+    .signal-warning {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .key-levels {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 16px;
+    }
+
+    .key-levels-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #64748b;
+      margin-bottom: 12px;
+    }
+
+    .key-levels-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .key-level-item {
+      font-size: 13px;
+    }
+
+    .key-level-item strong {
+      display: block;
+      font-size: 11px;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+
+    .key-level-item .level-value {
+      font-weight: 600;
+      color: #0f172a;
+    }
+
+    .educational-note {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-top: 16px;
+    }
+
+    .educational-note-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #92400e;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+    }
+
+    .educational-note-title:before {
+      content: "i";
+      margin-right: 6px;
+      font-weight: 700;
+    }
+
+    .educational-note-content {
+      font-size: 12px;
+      line-height: 1.6;
+      color: #78350f;
+      margin: 0;
+    }
+
+    .footer {
+      background: #0f172a;
+      padding: 28px 32px;
+    }
+
+    .footer-content {
+      font-size: 12px;
+      line-height: 1.8;
+      color: #94a3b8;
+      margin-bottom: 20px;
+    }
+
+    .footer-content p {
+      margin: 0 0 8px;
+    }
+
+    .footer-content strong {
+      color: #cbd5e1;
+      font-weight: 600;
+    }
+
+    .footer-disclaimer {
+      background: #1e293b;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .footer-disclaimer-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #f1f5f9;
+      margin-bottom: 8px;
+    }
+
+    .footer-disclaimer-text {
+      font-size: 11px;
+      line-height: 1.6;
+      color: #cbd5e1;
+      margin: 0;
+    }
+
+    .footer-branding {
+      padding-top: 16px;
+      border-top: 1px solid #1e293b;
+      color: #64748b;
+      font-size: 11px;
+      text-align: center;
+    }
+
+    @media only screen and (max-width: 640px) {
+      .email-wrapper {
+        padding: 0;
+      }
+
+      .header {
+        padding: 24px 20px;
+      }
+
+      .logo-image {
+        max-width: 220px;
+      }
+
+      .header-title {
+        font-size: 20px;
+      }
+
+      .content {
+        padding: 24px 20px;
+      }
+
+      .stock-card,
+      .technical-card {
+        padding: 20px 16px;
+      }
+
+      .metrics-table,
+      .price-info-table,
+      .key-levels-grid {
+        width: 100%;
+      }
+
+      .section-header {
+        font-size: 18px;
+      }
+
+      .stock-name {
+        font-size: 18px;
+      }
+
+      .footer {
+        padding: 24px 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="email-wrapper">
+    <table role="presentation" class="email-container" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td>
+          <div class="header">
+            <div class="logo-container">
+              {{LOGO_BLOCK}}
+            </div>
+            <h1 class="header-title">{{TITLE}}</h1>
+            <p class="header-subtitle">{{SUBTITLE}}</p>
+          </div>
+
+          <div class="content">
+            {{WATCHLIST_SECTION}}
+            {{TECHNICAL_SECTION}}
+          </div>
+
+          <div class="footer">
+            <div class="footer-disclaimer">
+              <div class="footer-disclaimer-title">Important Regulatory Notice</div>
+              <p class="footer-disclaimer-text">
+                This newsletter is for <strong>educational and informational purposes only</strong>. It is NOT investment advice, a recommendation, or solicitation to buy or sell any securities. Anveshq is not a SEBI-registered investment advisor. All observations represent our independent research and should be verified independently before making any investment decisions.
+              </p>
+            </div>
+
+            <div class="footer-content">
+              <p><strong>Investment Risks:</strong> Stock market investments are subject to market risks. Past performance does not indicate future results. Prices can go up as well as down. Please read all scheme-related documents carefully and understand the risks before investing.</p>
+
+              <p><strong>Data Sources and Limitations:</strong> Information compiled from publicly available sources including Yahoo Finance and other market data providers. Data may be delayed, incomplete, or subject to errors. We make no guarantees about data accuracy or completeness. Some fundamental metrics may not be available through free data sources.</p>
+
+              <p><strong>No Guarantees or Assurances:</strong> We make no representations, warranties, or guarantees regarding future performance, returns, or outcomes. Stock prices are inherently unpredictable and influenced by numerous factors beyond technical analysis.</p>
+
+              <p><strong>Professional Advice Recommended:</strong> We strongly recommend consulting with a SEBI-registered investment advisor or financial planner before making any investment decisions. They can provide personalized advice based on your individual financial situation, goals, risk tolerance, and time horizon.</p>
+
+              <p><strong>Independent Research Required:</strong> All content should be used as a starting point for your own independent research. Verify all data, conduct your own analysis, and make decisions based on your own judgment and risk assessment.</p>
+
+              <p><strong>No Liability:</strong> Anveshq and its contributors are not liable for any investment decisions, losses, or outcomes resulting from the use of this information. You invest at your own risk.</p>
+            </div>
+
+            <div class="footer-branding">
+              Powered by <strong>Anveshq</strong> - Stock Market Research and Education Platform
+            </div>
+          </div>
+        </td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>
