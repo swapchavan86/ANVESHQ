@@ -1,4 +1,5 @@
 sqlalchemy
+sqlcipher3
 yfinance
 pydantic
 pydantic-settings

@@ -1,5 +1,6 @@
 import os
 from functools import lru_cache
+from urllib.parse import quote
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -21,6 +22,13 @@ def _sqlite_url_from_path(path_value: str) -> str:
     return f"sqlite:///{normalized}"
 
 
+def _sqlcipher_url_from_path(path_value: str, password: str) -> str:
+    resolved = _resolve_project_path(path_value)
+    normalized = resolved.replace("\\", "/")
+    encoded_password = quote(password, safe="")
+    return f"sqlite+pysqlcipher://:{encoded_password}@/{normalized}"
+
+
 class Settings(BaseSettings):
     """
     Centralized application configuration.
@@ -32,6 +40,7 @@ class Settings(BaseSettings):
     # SQLite path-based configuration.
     DATABASE_PATH: str = "data/anveshq.db"
     TEST_DATABASE_PATH: str = "data/test_anveshq.db"
+    DB_PASSWORD: str | None = None
 
     USE_JSON_UNIVERSE: bool = True
     JSON_UNIVERSE_PATH: str = os.path.join("data", "master", "master-latest.json")
@@ -100,6 +109,16 @@ class Settings(BaseSettings):
             return value.strip().strip('"').strip("'").upper()
         return value
 
+    @field_validator("DB_PASSWORD", mode="before")
+    @classmethod
+    def normalize_db_password(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            normalized = value.strip().strip('"').strip("'")
+            return normalized or None
+        return value
+
     @property
     def database_file_path(self) -> str:
         return _resolve_project_path(self.DATABASE_PATH)
@@ -118,7 +137,10 @@ class Settings(BaseSettings):
 
     @property
     def active_database_url(self) -> str:
-        return self.test_database_url if self.MODE == "TEST" else self.database_url
+        active_path = self.TEST_DATABASE_PATH if self.MODE == "TEST" else self.DATABASE_PATH
+        if self.DB_PASSWORD:
+            return _sqlcipher_url_from_path(active_path, self.DB_PASSWORD)
+        return _sqlite_url_from_path(active_path)
 
     @property
     def active_database_file_path(self) -> str:

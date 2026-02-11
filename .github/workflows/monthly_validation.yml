@@ -26,6 +26,11 @@ jobs:
       - name: Ensure data directory exists
         run: mkdir -p data
 
+      - name: Install SQLCipher build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libsqlcipher-dev
+
       - name: Install dependencies
         working-directory: Backend
         run: python -m pip install -r requirements.txt
@@ -50,6 +55,7 @@ jobs:
           BREAKOUT_LOOKBACK_DAYS: ${{ secrets.BREAKOUT_LOOKBACK_DAYS }}
           MAX_RANK: ${{ secrets.MAX_RANK }}
           DECAY_FACTOR: ${{ secrets.DECAY_FACTOR }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         working-directory: Backend
         run: |
           python -m src.cleanup_service --validate-companies

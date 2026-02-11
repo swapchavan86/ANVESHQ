@@ -52,6 +52,8 @@ The project now uses SQLite instead of PostgreSQL/Supabase.
 
 - Production DB: `data/anveshq.db`
 - Test DB: `data/test_anveshq.db`
+- Encryption: SQLCipher (AES) with `DB_PASSWORD`
+- First run behavior: if an existing plaintext `data/anveshq.db` is found, it is migrated in-place to encrypted format
 - SQLite pragmas are enabled on connect:
   - `journal_mode=WAL`
   - `synchronous=NORMAL`
@@ -80,10 +82,11 @@ cd Backend
 python -m pip install -r requirements.txt
 ```
 
-3. Configure environment variables in `Backend/.env` (optional if defaults are acceptable):
+3. Configure environment variables in `Backend/.env`:
 - `MODE=DEV|PROD|TEST`
 - `DATABASE_PATH=data/anveshq.db`
 - `TEST_DATABASE_PATH=data/test_anveshq.db`
+- `DB_PASSWORD=<strong-password>` (required for `MODE=DEV` and `MODE=PROD`)
 - scan/filtering values and source URLs
 - SMTP settings for weekly email
 
@@ -150,6 +153,7 @@ python -m src.cleanup_service --full-cleanup --dry-run
 - `daily_scan.yml`
   - Runs daily at 12:30 UTC (6:00 PM IST)
   - Executes `src.main`
+  - Requires `DB_PASSWORD` in GitHub Secrets
   - Commits `data/anveshq.db` only when changed
 
 - `weekly_master_build.yml`
@@ -160,10 +164,12 @@ python -m src.cleanup_service --full-cleanup --dry-run
 - `weekly_email_report.yml`
   - Runs Sunday 16:30 UTC (10:00 PM IST)
   - Executes `src.email_report` (read-only DB usage)
+  - Requires `DB_PASSWORD` in GitHub Secrets
 
 - `monthly_validation.yml`
   - Runs first day of month at 00:00 UTC
   - Executes company validation + error cleanup + DB optimize
+  - Requires `DB_PASSWORD` in GitHub Secrets
   - Commits DB when changed
 
 ## Backup and Restore
@@ -200,4 +206,3 @@ Run tests from repo root:
 ```bash
 pytest Backend/tests -q
 ```
-

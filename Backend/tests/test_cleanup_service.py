@@ -24,6 +24,7 @@ def configured_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("MODE", "TEST")
     monkeypatch.setenv("DATABASE_PATH", str(db_path))
     monkeypatch.setenv("TEST_DATABASE_PATH", str(db_path))
+    monkeypatch.setenv("DB_PASSWORD", "")
     monkeypatch.setenv("MASTER_DATA_DIRECTORY", str(master_dir))
     monkeypatch.setenv("JSON_UNIVERSE_PATH", str(master_dir / "master-latest.json"))
     monkeypatch.setenv("DATA_RETENTION_WEEKS", "1")
@@ -114,4 +115,3 @@ def test_cleanup_old_master_files_keeps_latest_and_recent(configured_environment
     assert latest.exists()
     remaining_snapshots = sorted(path.name for path in master_dir.glob("master-*.json"))
     assert len(remaining_snapshots) == 3  # latest + 2 snapshot files
-

@@ -1,7 +1,10 @@
 import logging
 import os
+import sqlite3
 import time
 from contextlib import contextmanager
+import gc
+from types import ModuleType
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import OperationalError
@@ -14,6 +17,22 @@ logger = logging.getLogger("Anveshq.Database")
 
 _engine = None
 _SessionLocal = None
+
+
+def _load_sqlcipher_dbapi() -> ModuleType | None:
+    try:
+        import sqlcipher3.dbapi2 as sqlcipher_dbapi
+
+        return sqlcipher_dbapi
+    except ModuleNotFoundError:
+        pass
+
+    try:
+        import pysqlcipher3.dbapi2 as sqlcipher_dbapi
+
+        return sqlcipher_dbapi
+    except ModuleNotFoundError:
+        return None
 
 
 def _is_sqlite_locked_error(exc: Exception) -> bool:
@@ -30,6 +49,122 @@ def _ensure_parent_directory(file_path: str) -> None:
         os.makedirs(parent, exist_ok=True)
 
 
+def _sql_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _ensure_password_configuration(settings) -> None:
+    if settings.MODE != "TEST" and not settings.DB_PASSWORD:
+        raise RuntimeError(
+            "DB_PASSWORD is required when MODE is not TEST. "
+            "Set DB_PASSWORD in Backend/.env or GitHub Actions secrets."
+        )
+
+
+def _ensure_sqlcipher_dependency(settings) -> None:
+    if not settings.DB_PASSWORD:
+        return
+    if _load_sqlcipher_dbapi() is None:
+        raise RuntimeError(
+            "DB_PASSWORD is set, but SQLCipher DBAPI is missing. "
+            "Install `sqlcipher3` (or `pysqlcipher3`) before starting the app."
+        )
+
+
+def _is_plaintext_sqlite_database(file_path: str) -> bool:
+    if not os.path.exists(file_path):
+        return False
+    connection = None
+    try:
+        connection = sqlite3.connect(file_path, timeout=5)
+        cursor = connection.cursor()
+        cursor.execute("SELECT count(*) FROM sqlite_master")
+        cursor.fetchone()
+        cursor.close()
+        return True
+    except sqlite3.DatabaseError:
+        return False
+    finally:
+        if connection is not None:
+            connection.close()
+
+
+def _cleanup_sqlite_sidecar_files(file_path: str) -> None:
+    for suffix in ("-wal", "-shm"):
+        sidecar_file = f"{file_path}{suffix}"
+        if os.path.exists(sidecar_file):
+            os.remove(sidecar_file)
+
+
+def _replace_file_with_retry(source_file: str, target_file: str, retries: int = 5, delay_seconds: float = 0.2) -> None:
+    last_error: Exception | None = None
+    for _ in range(max(1, retries)):
+        try:
+            os.replace(source_file, target_file)
+            return
+        except PermissionError as exc:
+            last_error = exc
+            time.sleep(max(0.0, delay_seconds))
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f"Failed to replace database file {target_file}.")
+
+
+def _migrate_plaintext_to_sqlcipher(file_path: str, password: str) -> None:
+    sqlcipher_dbapi = _load_sqlcipher_dbapi()
+    if sqlcipher_dbapi is None:
+        raise RuntimeError("SQLCipher DBAPI is required for database encryption migration.")
+
+    temp_encrypted_file = f"{file_path}.enc_tmp"
+    if os.path.exists(temp_encrypted_file):
+        os.remove(temp_encrypted_file)
+
+    sqlcipher_connection = None
+    try:
+        sqlcipher_connection = sqlcipher_dbapi.connect(file_path)
+        cursor = sqlcipher_connection.cursor()
+        cursor.execute(
+            f"ATTACH DATABASE {_sql_literal(temp_encrypted_file)} "
+            f"AS encrypted KEY {_sql_literal(password)}"
+        )
+        cursor.execute("SELECT sqlcipher_export('encrypted')")
+        cursor.execute("DETACH DATABASE encrypted")
+        sqlcipher_connection.commit()
+        cursor.close()
+    except Exception as exc:
+        if os.path.exists(temp_encrypted_file):
+            os.remove(temp_encrypted_file)
+        raise RuntimeError(f"Failed to encrypt existing SQLite database at {file_path}.") from exc
+    finally:
+        if sqlcipher_connection is not None:
+            sqlcipher_connection.close()
+
+    gc.collect()
+    _replace_file_with_retry(temp_encrypted_file, file_path, retries=20, delay_seconds=0.25)
+    _cleanup_sqlite_sidecar_files(file_path)
+
+
+def _prepare_database_file(settings, db_path: str) -> None:
+    _ensure_password_configuration(settings)
+    _ensure_sqlcipher_dependency(settings)
+    if not settings.DB_PASSWORD:
+        return
+    if _is_plaintext_sqlite_database(db_path):
+        logger.warning("Detected plaintext SQLite DB. Encrypting file with SQLCipher at %s", db_path)
+        _migrate_plaintext_to_sqlcipher(db_path, settings.DB_PASSWORD)
+        logger.info("SQLite DB encryption completed at %s", db_path)
+
+
+def _validate_database_access() -> None:
+    try:
+        with _engine.connect() as connection:
+            connection.exec_driver_sql("SELECT count(*) FROM sqlite_master")
+    except Exception as exc:
+        raise RuntimeError(
+            "Database authentication failed. Verify DB_PASSWORD and SQLCipher configuration."
+        ) from exc
+
+
 def _initialize_db_components() -> None:
     global _engine, _SessionLocal
     if _engine is not None and _SessionLocal is not None:
@@ -38,6 +173,7 @@ def _initialize_db_components() -> None:
     settings = get_settings()
     db_path = settings.active_database_file_path
     _ensure_parent_directory(db_path)
+    _prepare_database_file(settings, db_path)
 
     _engine = create_engine(
         settings.active_database_url,
@@ -60,6 +196,7 @@ def _initialize_db_components() -> None:
         cursor.close()
 
     _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
+    _validate_database_access()
 
 
 def reset_db_components() -> None:
