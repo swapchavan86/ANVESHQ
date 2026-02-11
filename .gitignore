@@ -36,6 +36,16 @@ __pycache__/
 tests/test_data.db
 *.db
 *.sqlite3
+*.db-shm
+*.db-wal
+
+# Ignore test SQLite files
+data/test_anveshq.db
+data/test_anveshq.db-shm
+data/test_anveshq.db-wal
+
+# Keep production database tracked
+!data/anveshq.db
 
 # --- Distribution / Builds ---
 build/

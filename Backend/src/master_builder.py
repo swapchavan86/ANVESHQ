@@ -19,12 +19,11 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from src.config import get_settings
+from src.cleanup_service import cleanup_old_master_files
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='[ANVESHQ:ROOTSET] [%(levelname)s] %(message)s')
 
-# Define the directory to store the Rootset data files.
-DATA_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'master')
 SNAPSHOT_FILENAME_TEMPLATE = "master-{}.json"
 LATEST_FILENAME = "master-latest.json"
 
@@ -116,9 +115,10 @@ def rootset_builder():
     """
     logging.info("Starting Rootset builder job.")
     settings = get_settings()
+    data_dir = settings.master_data_directory
 
     # Create data directory if it doesn't exist. This is where the JSON files will be stored.
-    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(data_dir, exist_ok=True)
 
     # --- Tier 1: NSE Equity Master ---
     # This is the primary and most critical source. If this fails, the job aborts.
@@ -212,16 +212,20 @@ def rootset_builder():
     }
 
     # Save a timestamped snapshot of the Rootset.
-    snapshot_filepath = os.path.join(DATA_DIR, SNAPSHOT_FILENAME_TEMPLATE.format(snapshot_date))
+    snapshot_filepath = os.path.join(data_dir, SNAPSHOT_FILENAME_TEMPLATE.format(snapshot_date))
     with open(snapshot_filepath, 'w') as f:
         json.dump(output_json, f, indent=2)
     logging.info(f"Saved Rootset snapshot to {snapshot_filepath}")
 
     # Create/overwrite the 'latest' alias for the Fluxmind engine to use.
-    latest_filepath = os.path.join(DATA_DIR, LATEST_FILENAME)
+    latest_filepath = os.path.join(data_dir, LATEST_FILENAME)
     with open(latest_filepath, 'w') as f:
         json.dump(output_json, f, indent=2)
     logging.info(f"Saved latest Rootset alias to {latest_filepath}")
+
+    # Keep only last N snapshots + master-latest.
+    cleanup_stats = cleanup_old_master_files(dry_run=False)
+    logging.info("Master snapshot cleanup stats: %s", cleanup_stats.to_dict())
 
     logging.info("Rootset builder job finished successfully.")
 

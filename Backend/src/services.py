@@ -251,7 +251,37 @@ class RankingEngine:
         self.settings = settings_obj
         self.today = datetime.datetime.now(zoneinfo.ZoneInfo(self.settings.TIMEZONE)).date()
 
-    def update_ranking(self, symbol: str, price: float, low_52_week_price: float, low_52_week_date: datetime.date, high_52_week_price: float, high_52_week_date: datetime.date, risk_score: int, is_volume_confirmed: bool, is_fundamental_ok: bool, company_name: str | None = None):
+    def update_ranking(
+        self,
+        symbol: str,
+        price: float,
+        low_52_week_price: float,
+        low_52_week_date: datetime.date,
+        high_52_week_price: float,
+        high_52_week_date: datetime.date,
+        risk_score: int,
+        is_volume_confirmed: bool,
+        is_fundamental_ok: bool,
+        company_name: str | None = None,
+    ):
+        # Critical field guardrail.
+        if price is None or low_52_week_price is None or high_52_week_price is None:
+            logger.warning("RANKING_UPDATE: SKIP %s due to missing critical values.", symbol)
+            return False
+
+        # Outlier detection for manual review.
+        if price > 100000 or price < 1:
+            logger.warning("RANKING_UPDATE: OUTLIER %s price %.2f flagged for review.", symbol, price)
+            try:
+                ErrorLogger.log_error(
+                    self.session,
+                    "Outlier Price Detected",
+                    details={"symbol": symbol, "price": price, "date": str(self.today)},
+                )
+            except Exception as log_exc:
+                logger.warning("Failed to persist outlier warning for %s: %s", symbol, log_exc)
+            return False
+
         stmt = select(MomentumStock).where(MomentumStock.symbol == symbol)
         stock = self.session.execute(stmt).scalar_one_or_none()
 
@@ -265,7 +295,7 @@ class RankingEngine:
             logger.info(f"RANKING_UPDATE: NEW STOCK {symbol}. Initial rank: 1.")
         elif stock.last_seen_date < self.today:
             old_rank = stock.rank_score or 0
-            stock.rank_score = min(old_rank + 1, self.settings.MAX_RANK)
+            stock.rank_score = min(old_rank + 1, min(self.settings.MAX_RANK, 100))
             stock.daily_rank_delta = stock.rank_score - old_rank
             logger.info(f"RANKING_UPDATE: INCREMENT {symbol}. Old rank: {old_rank}, New rank: {stock.rank_score}, Last seen: {stock.last_seen_date}, Today: {self.today}.")
         else:
@@ -281,6 +311,7 @@ class RankingEngine:
         stock.risk_score = risk_score
         stock.is_volume_confirmed = is_volume_confirmed
         stock.is_fundamental_ok = is_fundamental_ok
+        stock.is_active = True
         if company_name is not None:
             stock.company_name = company_name
         return True
@@ -307,8 +338,8 @@ class RankingEngine:
         except Exception as e:
             self.session.rollback()
             logger.error(f"Error during rank decay process: {e}")
-            with get_db_context() as session:
-                ErrorLogger.log_error(session, "Rank Decay Error", details={"error": str(e)})
+            with get_db_context() as error_session:
+                ErrorLogger.log_error(error_session, "Rank Decay Error", details={"error": str(e)})
 
 # --- CLASS 3: PARALLEL FETCHER ---
 class StockFetcher:
@@ -483,23 +514,29 @@ class StockFetcher:
                         qualified_symbols.add(symbol)
                     except Exception as e:
                         logger.error(f"Error processing {symbol}: {type(e).__name__} - {e}", exc_info=True)
-                        with get_db_context() as error_session:
+                        try:
                             ErrorLogger.log_error(
-                                error_session, 
-                                f"Processing Error: {type(e).__name__}", 
-                                details={"symbol": symbol, "batch_id": batch_id, "error": str(e)}
+                                session,
+                                f"Processing Error: {type(e).__name__}",
+                                details={"symbol": symbol, "batch_id": batch_id, "error": str(e)},
+                            )
+                        except Exception as log_exc:
+                            logger.warning(
+                                "Failed to write processing error for %s in batch %s: %s",
+                                symbol,
+                                batch_id,
+                                log_exc,
                             )
                         continue
-                session.commit()
                 logger.info(f"--- Finished Batch {batch_id}, Committing {len(qualified_symbols)} updates ---")
             except Exception as e:
                 logger.error(f"--- Batch {batch_id} failed, rolling back ---", exc_info=True)
                 session.rollback()
                 with get_db_context() as error_session:
                     ErrorLogger.log_error(
-                        error_session, 
-                        f"Batch Processing Error: {type(e).__name__}", 
-                        details={"batch_id": batch_id, "error": str(e)}
+                        error_session,
+                        f"Batch Processing Error: {type(e).__name__}",
+                        details={"batch_id": batch_id, "error": str(e)},
                     )
             return qualified_symbols
     @staticmethod
@@ -632,9 +669,9 @@ class ErrorLogger:
 
     @staticmethod
     def log_error(session: Session, error_message: str, details: dict = None):
-        stmt = select(Error).where(Error.error_message == error_message)
-        exists = session.execute(stmt).first()
-        if not exists:
+        stmt = select(Error.id).where(Error.error_message == error_message).limit(1)
+        exists = session.execute(stmt).scalar_one_or_none()
+        if exists is None:
             error_code = ErrorLogger.generate_error_code()
             new_error = Error(
                 error_code=error_code, 
@@ -642,4 +679,3 @@ class ErrorLogger:
                 error_details=details
             )
             session.add(new_error)
-            session.commit()

@@ -200,7 +200,7 @@ class TickerLoader:
             # WHY: This is the new, preferred path for loading the universe.
             # It relies on the stable, weekly-built JSON file, which eliminates
             # the operational risk of hitting the live NSE master feed daily.
-            final_list = TickerLoader._load_from_json(settings.JSON_UNIVERSE_PATH)
+            final_list = TickerLoader._load_from_json(settings.json_universe_file_path)
         else:
             # WHY: This is the legacy path, retained for backward compatibility or
             # as a fallback. It hits the live feeds directly.

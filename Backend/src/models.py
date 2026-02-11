@@ -1,112 +1,131 @@
 from datetime import date, datetime
-from typing import Optional, List
+from typing import List, Optional
 import enum
 
-# SQLAlchemy Imports
-from sqlalchemy import String, Integer, Float, Date, DateTime, func, ForeignKey, Boolean
-from sqlalchemy.dialects.postgresql import JSON
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    func,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
 
 class Base(DeclarativeBase):
     pass
 
-# --- ENUMS (Roles) ---
-class UserRole(str, enum.Enum):
-    ADMIN = "admin"           # Full Access (Can delete users, view all data)
-    USER = "user"             # Standard Access (Can view Stocks)
-    SUBSCRIBER = "subscriber" # Paid User (Ad-free experience - Future Scope)
 
-# --- 1. STOCK DATA (Product) ---
+class UserRole(str, enum.Enum):
+    ADMIN = "admin"
+    USER = "user"
+    SUBSCRIBER = "subscriber"
+
+
 class MomentumStock(Base):
     __tablename__ = "momentum_ranks"
+    __table_args__ = (
+        CheckConstraint("rank_score >= 0 AND rank_score <= 100", name="ck_rank_score_range"),
+        CheckConstraint("daily_rank_delta >= -100 AND daily_rank_delta <= 100", name="ck_daily_rank_delta_range"),
+        CheckConstraint("current_price IS NULL OR (current_price >= 1 AND current_price <= 100000)", name="ck_price_range"),
+        Index("ix_momentum_symbol_last_seen", "symbol", "last_seen_date"),
+        Index("ix_momentum_last_seen_date", "last_seen_date"),
+        Index("ix_momentum_rank_score", "rank_score"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     symbol: Mapped[str] = mapped_column(String(20), unique=True, index=True)
-    company_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)  # From yfinance during scan
-    
-    # Core Logic Data
-    rank_score: Mapped[int] = mapped_column(Integer, default=1)
-    last_seen_date: Mapped[Date] = mapped_column(Date)
-    
-    # New Rank System Columns
-    daily_rank_delta: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    last_rank_score: Mapped[int] = mapped_column(Integer, nullable=True)
+    company_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
-    # Top 10 Tracking
-    last_top10_date: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
+    rank_score: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    last_seen_date: Mapped[date] = mapped_column(Date, nullable=False)
+
+    daily_rank_delta: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_rank_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    last_top10_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     top10_hit_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
-    # Strength and Quality Indicators
-    risk_score: Mapped[int] = mapped_column(Integer, nullable=True)
-    is_volume_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=True)
-    is_fundamental_ok: Mapped[bool] = mapped_column(Boolean, nullable=True)
+    risk_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    is_volume_confirmed: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    is_fundamental_ok: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
 
-    # Financial Data
-    current_price: Mapped[float] = mapped_column(Float, nullable=True)
-    low_52_week: Mapped[float] = mapped_column(Float, nullable=True) # This is 52-week low price
-    low_52_week_date: Mapped[Date] = mapped_column(Date, nullable=True)
-    high_52_week_price: Mapped[float] = mapped_column(Float, nullable=True)
-    high_52_week_date: Mapped[Date] = mapped_column(Date, nullable=True)
-    
+    current_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    low_52_week: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    low_52_week_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    high_52_week_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    high_52_week_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+
+    # Company health/validation controls.
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    manual_delete_flag: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    last_validated_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    validation_failed_since: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, onupdate=func.now(), server_default=func.now())
 
-# --- 2. USER TABLE (RBAC & Auth) ---
+
 class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    
-    # Login Credentials
     username: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     email: Mapped[str] = mapped_column(String(100), unique=True, index=True)
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=True) # Null if Google Login
-    
-    # Personal Info (For future Marketing/Ads targeting)
-    first_name: Mapped[str] = mapped_column(String(50), nullable=True)
-    last_name: Mapped[str] = mapped_column(String(50), nullable=True)
-    phone: Mapped[str] = mapped_column(String(15), unique=True, nullable=True, index=True)
-    
-    # Security & Status
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)   # Can login?
-    is_verified: Mapped[bool] = mapped_column(Boolean, default=False) # OTP verified?
+    hashed_password: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    first_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    last_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(15), unique=True, nullable=True, index=True)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     is_google_user: Mapped[bool] = mapped_column(Boolean, default=False)
-    
-    # Role Based Access Control (RBAC)
     role: Mapped[UserRole] = mapped_column(String, default=UserRole.USER)
-    
-    # Timestamps
+
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, onupdate=func.now(), server_default=func.now())
 
-    # Relationships
-    verifications: Mapped[List["VerificationCode"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    verifications: Mapped[List["VerificationCode"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
-# --- 3. OTP SYSTEM (Validation) ---
+
 class VerificationCode(Base):
-    """
-    Stores OTPs for Email/Phone verification.
-    """
     __tablename__ = "verification_codes"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    
-    code: Mapped[str] = mapped_column(String(10)) # The OTP (e.g., 583920)
-    type: Mapped[str] = mapped_column(String(20)) # "email_verification", "phone_verification", "password_reset"
+    code: Mapped[str] = mapped_column(String(10))
+    type: Mapped[str] = mapped_column(String(20))
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     is_used: Mapped[bool] = mapped_column(Boolean, default=False)
-    
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    
+
     user: Mapped["User"] = relationship(back_populates="verifications")
 
-# --- 4. ERROR LOGGING ---
+
 class Error(Base):
     __tablename__ = "errors"
+    __table_args__ = (Index("ix_errors_timestamp", "timestamp"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     error_code: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     error_message: Mapped[str] = mapped_column(String(500))
-    error_details: Mapped[dict] = mapped_column(JSON, nullable=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    error_details: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+
+
+class AppMetadata(Base):
+    __tablename__ = "app_metadata"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(String(500), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())

@@ -8,7 +8,7 @@ from email.mime.image import MIMEImage
 import yfinance as yf
 import pandas as pd
 from sqlalchemy.orm import Session
-from src.database import get_db_context
+from src.database import get_database_size, get_db_context
 from src.models import MomentumStock
 from src.config import get_settings
 from src.yahoo_finance import get_ticker
@@ -1118,6 +1118,11 @@ def generate_email_html(top_picks: list[MomentumStock], missed_opportunities: li
         </div>
         """
 
+    db_size_mb = get_database_size()
+    db_size_note = f"Database size: {db_size_mb:.3f} MB"
+    if db_size_mb > get_settings().DB_SIZE_WARNING_MB:
+        db_size_note += " (WARNING: above monitoring threshold)"
+
     template = _load_email_template()
     week_of = datetime.date.today().strftime("%b %d, %Y")
     subtitle = f"Independent research and technical analysis for learning - Week of {week_of}"
@@ -1125,7 +1130,10 @@ def generate_email_html(top_picks: list[MomentumStock], missed_opportunities: li
         template.replace("{{TITLE}}", "Weekly Market Research Newsletter")
         .replace("{{SUBTITLE}}", subtitle)
         .replace("{{WATCHLIST_SECTION}}", watchlist_section)
-        .replace("{{TECHNICAL_SECTION}}", technical_section)
+        .replace(
+            "{{TECHNICAL_SECTION}}",
+            technical_section + f'<p class="disclaimer"><strong>System:</strong> {db_size_note}</p>',
+        )
         .replace("{{LOGO_BLOCK}}", _get_logo_block())
     )
 
