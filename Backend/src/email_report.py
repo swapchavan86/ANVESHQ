@@ -990,7 +990,7 @@ def _build_technical_card_html(stock: MomentumStock, roi_value: float | None = N
         <div class="technical-section">
           <div class="technical-section-title">Technical Indicators to Study</div>
           <ul class="technical-observations">
-            {"".join(f"<li>{item} <span class=\"signal-badge {sig}\">{label}</span></li>" for item, sig, label in ma_ema_items)}
+            {"".join(f'<li>{item} <span class="signal-badge {sig}">{label}</span></li>' for item, sig, label in ma_ema_items)}
             <li>{rsi_text} <span class="signal-badge {rsi_signal}">{rsi_label}</span></li>
             <li>{volume_text} <span class="signal-badge {volume_signal}">{volume_label}</span></li>
           </ul>
