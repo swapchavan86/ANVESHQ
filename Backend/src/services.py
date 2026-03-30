@@ -24,7 +24,7 @@ import math
 
 logger = logging.getLogger("Anveshq")
 logger.setLevel(logging.INFO)
-logging.getLogger('yfinance').setLevel(logging.CRITICAL)
+logging.getLogger("yfinance").setLevel(logging.ERROR)
 
 CACHE_FILE = "fundamentals_cache.json"
 CACHE_EXPIRY_DAYS = 7
@@ -103,16 +103,21 @@ class RiskAndQualityAnalyzer:
         A stock's recent liquidity should not be abnormally low compared to its history.
         This check helps filter out stocks with liquidity and volume anomalies.
         """
-        if len(df) < 180: return False, "Insufficient history for liquidity check"
+        history_window = min(len(df), 180)
+        if history_window < 60:
+            return False, f"Insufficient history for liquidity check ({len(df)} rows < 60)"
         
         turnover = df['Close'] * df['Volume']
         median_turnover_10d = turnover.tail(10).median()
-        median_turnover_180d = turnover.tail(180).median()
+        median_turnover_180d = turnover.tail(history_window).median()
 
         if median_turnover_180d == 0: return False, "Zero median turnover in last 180 days"
 
         if (median_turnover_10d / median_turnover_180d) < settings_obj.RELATIVE_LIQUIDITY_FACTOR:
-            return False, f"Relative liquidity failure ({median_turnover_10d:.2f} vs {median_turnover_180d:.2f})"
+            return False, (
+                "Relative liquidity failure "
+                f"({median_turnover_10d:.2f} vs {median_turnover_180d:.2f}, history_window={history_window})"
+            )
         return True, None
 
     @staticmethod
@@ -314,12 +319,21 @@ class RankingEngine:
         stock.is_active = True
         if company_name is not None:
             stock.company_name = company_name
+        logger.info(
+            "RANKING_UPDATE: SET %s last_seen_date=%s rank=%s price=%.2f.",
+            symbol,
+            stock.last_seen_date,
+            stock.rank_score,
+            price,
+        )
         return True
 
     def decay_unseen_ranks(self, seen_symbols: set[str]):
         logger.info(f"Decaying ranks for all stocks not in today's seen list ({len(seen_symbols)} symbols)...")
         try:
-            stmt = select(MomentumStock).filter(MomentumStock.symbol.notin_(seen_symbols))
+            stmt = select(MomentumStock)
+            if seen_symbols:
+                stmt = stmt.filter(MomentumStock.symbol.notin_(seen_symbols))
             stocks_to_decay = self.session.execute(stmt).scalars().all()
             if not stocks_to_decay:
                 logger.info("No stocks to decay.")
@@ -389,11 +403,128 @@ class StockFetcher:
         session.commit()
         
         return top_10_list
-        
+
     @staticmethod
-    def process_single_batch(batch_tickers: list[str], batch_id: int, settings_obj, bhavcopy_df: pd.DataFrame) -> set[str]:
+    def _normalize_market_dataframe(df: pd.DataFrame, settings_obj) -> pd.DataFrame:
+        if df is None or df.empty:
+            return pd.DataFrame()
+
+        normalized_df = df.copy()
+        index = pd.to_datetime(normalized_df.index, errors="coerce")
+        valid_mask = ~pd.isna(index)
+        normalized_df = normalized_df.loc[valid_mask].copy()
+        index = pd.DatetimeIndex(index[valid_mask])
+
+        if normalized_df.empty:
+            return normalized_df
+
+        market_tz = zoneinfo.ZoneInfo(settings_obj.TIMEZONE)
+        if index.tz is not None:
+            index = index.tz_convert(market_tz).tz_localize(None)
+
+        normalized_df.index = index.normalize()
+        normalized_df = normalized_df.loc[:, ~normalized_df.columns.duplicated()]
+        normalized_df = normalized_df[~normalized_df.index.duplicated(keep="last")]
+        return normalized_df.sort_index()
+
+    @staticmethod
+    def _extract_trade_date_from_bhavcopy(bhavcopy_df: pd.DataFrame, settings_obj) -> date | None:
+        if bhavcopy_df is None or bhavcopy_df.empty or "BizDt" not in bhavcopy_df.columns:
+            return None
+
+        biz_dates = pd.to_datetime(bhavcopy_df["BizDt"], errors="coerce").dropna()
+        if biz_dates.empty:
+            return None
+        return MarketValidator.coerce_to_market_date(biz_dates.max(), settings_obj)
+
+    @staticmethod
+    def _merge_market_data(
+        symbol: str,
+        df_yf: pd.DataFrame,
+        bhavcopy_df: pd.DataFrame,
+        settings_obj,
+    ) -> tuple[pd.DataFrame, dict[str, str | int | None]]:
+        normalized_yf = StockFetcher._normalize_market_dataframe(df_yf, settings_obj)
+        yf_last_date = (
+            MarketValidator.coerce_to_market_date(normalized_yf.index[-1], settings_obj)
+            if not normalized_yf.empty
+            else None
+        )
+
+        merge_info: dict[str, str | int | None] = {
+            "source": "yfinance_only",
+            "yf_last_date": str(yf_last_date) if yf_last_date else None,
+            "bhavcopy_date": None,
+            "final_last_date": str(yf_last_date) if yf_last_date else None,
+            "row_count": len(normalized_yf),
+        }
+
+        if bhavcopy_df is None or bhavcopy_df.empty:
+            return normalized_yf, merge_info
+
+        symbol_without_suffix = symbol.split(".")[0]
+        daily_data_row = bhavcopy_df[bhavcopy_df["TckrSymb"] == symbol_without_suffix]
+        if daily_data_row.empty:
+            merge_info["source"] = "yfinance_only_bhavcopy_miss"
+            return normalized_yf, merge_info
+
+        daily_data = daily_data_row.iloc[0]
+        bhavcopy_timestamp = pd.to_datetime(daily_data["BizDt"], errors="coerce")
+        bhavcopy_date = MarketValidator.coerce_to_market_date(bhavcopy_timestamp, settings_obj)
+        merge_info["bhavcopy_date"] = str(bhavcopy_date) if bhavcopy_date else None
+
+        if bhavcopy_date is None:
+            merge_info["source"] = "yfinance_only_invalid_bhavcopy_date"
+            return normalized_yf, merge_info
+
+        bhavcopy_row = pd.DataFrame(
+            {
+                "Open": [daily_data["OpnPric"]],
+                "High": [daily_data["HghPric"]],
+                "Low": [daily_data["LwPric"]],
+                "Close": [daily_data["ClsPric"]],
+                "Volume": [daily_data["TtlTradgVol"]],
+            },
+            index=[pd.Timestamp(bhavcopy_date)],
+        )
+
+        merged_df = pd.concat([normalized_yf, bhavcopy_row], sort=False)
+        merged_df = StockFetcher._normalize_market_dataframe(merged_df, settings_obj)
+        final_last_date = (
+            MarketValidator.coerce_to_market_date(merged_df.index[-1], settings_obj)
+            if not merged_df.empty
+            else None
+        )
+
+        if normalized_yf.empty:
+            merge_source = "bhavcopy_only"
+        elif yf_last_date == bhavcopy_date:
+            merge_source = "bhavcopy_replaced_same_day_row"
+        elif yf_last_date and yf_last_date < bhavcopy_date:
+            merge_source = "bhavcopy_extended_yfinance"
+        else:
+            merge_source = "yfinance_plus_bhavcopy"
+
+        merge_info.update(
+            {
+                "source": merge_source,
+                "final_last_date": str(final_last_date) if final_last_date else None,
+                "row_count": len(merged_df),
+            }
+        )
+        return merged_df, merge_info
+                            
+    @staticmethod
+    def process_single_batch(
+        batch_tickers: list[str],
+        batch_id: int,
+        settings_obj,
+        bhavcopy_df: pd.DataFrame,
+        expected_market_date: date | None = None,
+    ) -> set[str]:
         logger.info(f"--- Starting Batch {batch_id} ---")
         qualified_symbols = set()
+        min_history_days = max(30, int(getattr(settings_obj, "MIN_HISTORY_DAYS", 150)))
         with get_db_context() as session:
             try:
                 engine_svc = RankingEngine(session, settings_obj)
@@ -427,33 +558,45 @@ class StockFetcher:
                         # FIX: Remove duplicate index dates (clean up yfinance data)
                         df_yf = df_yf[~df_yf.index.duplicated(keep='last')]
 
-                        symbol_without_suffix = symbol.split('.')[0]
-                        daily_data_row = bhavcopy_df[bhavcopy_df['TckrSymb'] == symbol_without_suffix]
-
-                        if not daily_data_row.empty:
-                            daily_data = daily_data_row.iloc[0]
-                            today_date = pd.to_datetime(daily_data['BizDt'])
-                            if not df_yf.empty and df_yf.index[-1].date() == today_date.date():
-                                df_yf = df_yf.iloc[:-1]
-                            new_row = pd.DataFrame({
-                                'Open': [daily_data['OpnPric']], 'High': [daily_data['HghPric']],
-                                'Low': [daily_data['LwPric']], 'Close': [daily_data['ClsPric']],
-                                'Volume': [daily_data['TtlTradgVol']]
-                            }, index=[today_date])
-                            df = pd.concat([df_yf, new_row]) if not df_yf.empty else new_row
-                        else:
-                            df = df_yf
+                        df, merge_info = StockFetcher._merge_market_data(symbol, df_yf, bhavcopy_df, settings_obj)
+                        logger.info(
+                            "DATA MERGE %s: source=%s yf_last_date=%s bhavcopy_date=%s final_last_date=%s rows=%s expected_market_date=%s",
+                            symbol,
+                            merge_info["source"],
+                            merge_info["yf_last_date"],
+                            merge_info["bhavcopy_date"],
+                            merge_info["final_last_date"],
+                            merge_info["row_count"],
+                            expected_market_date,
+                        )
 
                         if df.empty:
-                            logger.info(f"SKIP {symbol}: No data available.")
+                            logger.info(
+                                "SKIP %s: No data available after merge. source=%s yf_last_date=%s bhavcopy_date=%s",
+                                symbol,
+                                merge_info["source"],
+                                merge_info["yf_last_date"],
+                                merge_info["bhavcopy_date"],
+                            )
                             continue
                         
-                        if len(df) < 200:
-                            logger.info(f"SKIP {symbol}: Insufficient data (< 200 days).")
+                        if len(df) < min_history_days:
+                            logger.info(
+                                "SKIP %s: Insufficient data (%s rows < MIN_HISTORY_DAYS=%s). final_last_date=%s source=%s",
+                                symbol,
+                                len(df),
+                                min_history_days,
+                                merge_info["final_last_date"],
+                                merge_info["source"],
+                            )
                             continue
 
-                        if not MarketValidator.validate_market_data_freshness(df, settings_obj):
-                            logger.info(f"SKIP {symbol}: Stale data.")
+                        if not MarketValidator.validate_market_data_freshness(
+                            df,
+                            settings_obj,
+                            symbol=symbol,
+                            expected_market_date=expected_market_date,
+                        ):
                             continue
 
                         current_close = float(df['Close'].iloc[-1])
@@ -464,7 +607,15 @@ class StockFetcher:
                             continue
 
                         if current_close < (high_52 * settings_obj.NEAR_52_WEEK_HIGH_THRESHOLD):
-                            logger.info(f"SKIP {symbol}: Price not near 52-week high.")
+                            threshold_price = high_52 * settings_obj.NEAR_52_WEEK_HIGH_THRESHOLD
+                            logger.info(
+                                "SKIP %s: Price %.2f below near-52-week-high threshold %.2f (high_52=%.2f, multiplier=%.2f).",
+                                symbol,
+                                current_close,
+                                threshold_price,
+                                high_52,
+                                settings_obj.NEAR_52_WEEK_HIGH_THRESHOLD,
+                            )
                             continue
 
                         is_liquid, liq_reason = RiskAndQualityAnalyzer.relative_liquidity_check(df, settings_obj)
@@ -490,8 +641,8 @@ class StockFetcher:
                             company_name = (info.get("shortName") or info.get("longName")) if info else None
                             if isinstance(company_name, str):
                                 company_name = company_name.strip() or None
-                        except Exception:
-                            pass
+                        except Exception as company_name_exc:
+                            logger.warning("Company name lookup failed for %s: %s", symbol, company_name_exc)
                         
                         high_date_idx = df['High'].idxmax()
                         high_date = high_date_idx.date() if isinstance(high_date_idx, pd.Timestamp) else high_date_idx
@@ -543,9 +694,13 @@ class StockFetcher:
     def scan_stocks_parallel(tickers: list[str], batch_size: int = 100, max_workers: int = 10):
         
         # --- Deduplicate tickers ---
-        tickers = list(set(tickers))
+        tickers = list(dict.fromkeys(tickers))
 
         bhavcopy_df = Bhavcopy.get_bhavcopy_data()
+        current_settings = get_settings()
+        expected_market_date = StockFetcher._extract_trade_date_from_bhavcopy(bhavcopy_df, current_settings)
+        if expected_market_date is None:
+            expected_market_date = MarketValidator.get_expected_market_date(current_settings)
         
         if bhavcopy_df.empty:
             logger.warning("Could not get Bhavcopy data. Proceeding with full universe as fallback.")
@@ -553,11 +708,29 @@ class StockFetcher:
         else:
             bhavcopy_symbols = set(bhavcopy_df['TckrSymb'].unique())
             logger.info(f"Loaded {len(bhavcopy_symbols)} unique symbols from Bhavcopy.")
-            filtered_tickers = [t for t in tickers if t.split('.')[0] in bhavcopy_symbols]
+            filtered_tickers = []
+            filtered_out_tickers = []
+            for ticker in tickers:
+                if ticker.split(".")[0] in bhavcopy_symbols:
+                    filtered_tickers.append(ticker)
+                else:
+                    filtered_out_tickers.append(ticker)
+            for ticker in filtered_out_tickers:
+                logger.info(
+                    "SKIP %s: Filtered by Bhavcopy. Base symbol %s not present in latest Bhavcopy trade date %s.",
+                    ticker,
+                    ticker.split(".")[0],
+                    expected_market_date,
+                )
             logger.info(f"Universe filtered to {len(filtered_tickers)} actively traded stocks.")
         total = len(filtered_tickers)
         if total == 0:
-            logger.warning("No tickers to scan. Aborting.")
+            logger.warning(
+                "No tickers to scan. Aborting. input_tickers=%s expected_market_date=%s bhavcopy_available=%s",
+                len(tickers),
+                expected_market_date,
+                not bhavcopy_df.empty,
+            )
             return
         logger.info(f"Starting Parallel Scan for {total} stocks...")
 
@@ -577,11 +750,20 @@ class StockFetcher:
             filtered_tickers[i:i + effective_batch_size]
             for i in range(0, total, effective_batch_size)
         ]
-        current_settings = get_settings()
         all_qualified_symbols = set()
         effective_workers = min(max_workers, len(batches))
         with ThreadPoolExecutor(max_workers=effective_workers) as executor:
-            future_to_batch = {executor.submit(StockFetcher.process_single_batch, batch, i+1, current_settings, bhavcopy_df): i for i, batch in enumerate(batches)}
+            future_to_batch = {
+                executor.submit(
+                    StockFetcher.process_single_batch,
+                    batch,
+                    i + 1,
+                    current_settings,
+                    bhavcopy_df,
+                    expected_market_date,
+                ): i
+                for i, batch in enumerate(batches)
+            }
             for future in as_completed(future_to_batch):
                 batch_num = future_to_batch[future] + 1
                 try:
@@ -590,12 +772,11 @@ class StockFetcher:
                     logger.info(f"Progress: Batch {batch_num}/{len(batches)} done. Found {len(qualified_in_batch)} qualified.")
                 except Exception as exc:
                     logger.error(f'Batch {batch_num} generated an exception: {exc}', exc_info=True)
-        if all_qualified_symbols:
-            with get_db_context() as session:
-                engine_svc = RankingEngine(session, current_settings)
-                engine_svc.decay_unseen_ranks(all_qualified_symbols)
-        else:
-            logger.warning("No stocks qualified in this run. Skipping rank decay.")
+        if not all_qualified_symbols:
+            logger.warning("No stocks qualified in this run. Running rank decay for all previously tracked symbols.")
+        with get_db_context() as session:
+            engine_svc = RankingEngine(session, current_settings)
+            engine_svc.decay_unseen_ranks(all_qualified_symbols)
         logger.info("Fluxmind scan complete.")
 
 # --- CLASS 4: VALIDATOR ---
@@ -651,13 +832,75 @@ class MarketValidator:
         return True
 
     @staticmethod
-    def validate_market_data_freshness(df: pd.DataFrame, settings_obj) -> bool:
-        if df.empty: return False
+    def coerce_to_market_date(value, settings_obj) -> date | None:
+        if value is None or pd.isna(value):
+            return None
+
+        timestamp = pd.Timestamp(value)
+        market_tz = zoneinfo.ZoneInfo(settings_obj.TIMEZONE)
+        if timestamp.tzinfo is not None:
+            timestamp = timestamp.tz_convert(market_tz).tz_localize(None)
+        return timestamp.date()
+
+    @staticmethod
+    def get_expected_market_date(settings_obj) -> date:
         tz = zoneinfo.ZoneInfo(settings_obj.TIMEZONE)
-        today = datetime.datetime.now(tz).date()
-        last_date = df.index[-1].date()
-        delta = (today - last_date).days
-        if delta > 3: return False
+        market_today = datetime.datetime.now(tz).date()
+        try:
+            latest_available_date = Bhavcopy.find_latest_available_date(
+                market_today,
+                settings_obj,
+                max_lookback_days=7,
+            )
+            if latest_available_date is not None:
+                return latest_available_date
+        except Exception as exc:
+            logger.warning(
+                "Could not resolve latest available market date. Falling back to %s. error=%s",
+                market_today,
+                exc,
+            )
+        return market_today
+
+    @staticmethod
+    def validate_market_data_freshness(
+        df: pd.DataFrame,
+        settings_obj,
+        symbol: str | None = None,
+        expected_market_date: date | None = None,
+    ) -> bool:
+        if df.empty:
+            logger.info("SKIP %s: Stale data check received an empty dataframe.", symbol or "<unknown>")
+            return False
+
+        tz = zoneinfo.ZoneInfo(settings_obj.TIMEZONE)
+        market_today = datetime.datetime.now(tz).date()
+        reference_date = expected_market_date or MarketValidator.get_expected_market_date(settings_obj)
+        raw_last_index = df.index[-1]
+        last_date = MarketValidator.coerce_to_market_date(raw_last_index, settings_obj)
+
+        if last_date is None:
+            logger.info(
+                "SKIP %s: Stale data. market_today=%s expected_market_date=%s last_date=None raw_last_index=%s",
+                symbol or "<unknown>",
+                market_today,
+                reference_date,
+                raw_last_index,
+            )
+            return False
+
+        delta = (reference_date - last_date).days
+        if delta > 0:
+            logger.info(
+                "SKIP %s: Stale data. market_today=%s expected_market_date=%s last_date=%s raw_last_index=%s calendar_gap_from_today=%s.",
+                symbol or "<unknown>",
+                market_today,
+                reference_date,
+                last_date,
+                raw_last_index,
+                (market_today - last_date).days,
+            )
+            return False
         return True
 
 # --- CLASS 5: ERROR LOGGER ---

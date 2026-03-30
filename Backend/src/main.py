@@ -84,7 +84,13 @@ def main() -> None:
 
     tickers = TickerLoader.get_unique_tickers()
     if not tickers:
-        logger.critical("No tickers found.")
+        universe_source = settings.json_universe_file_path if settings.USE_JSON_UNIVERSE else "live NSE/BSE feeds"
+        logger.critical(
+            "No tickers found. use_json_universe=%s source=%s cache_file=%s",
+            settings.USE_JSON_UNIVERSE,
+            universe_source,
+            TickerLoader.CACHE_FILE,
+        )
         sys.exit(1)
 
     StockFetcher.scan_stocks_parallel(tickers, batch_size=50, max_workers=10)

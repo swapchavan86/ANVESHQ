@@ -60,6 +60,7 @@ class Settings(BaseSettings):
 
     # Core scan settings.
     FUNDAMENTAL_CHECK_ENABLED: bool = True
+    MIN_HISTORY_DAYS: int = 150
     MIN_PRICE: float = 20.0
     MIN_MCAP_CRORES: float = 1000.0
     STREAK_THRESHOLD_DAYS: int = 3

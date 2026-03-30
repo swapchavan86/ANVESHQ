@@ -151,11 +151,20 @@ class TickerLoader:
             
             records = data.get('records', [])
             tickers = []
-            for record in records:
+            for idx, record in enumerate(records):
                 symbol = record.get('symbol')
                 exchange_suffix = record.get('exchange_suffix')
-                if symbol and exchange_suffix:
-                    tickers.append(f"{symbol}.{exchange_suffix}")
+                if not symbol:
+                    logger.info("UNIVERSE FILTER: JSON record %s skipped. Missing symbol. record=%s", idx, record)
+                    continue
+                if not exchange_suffix:
+                    logger.info(
+                        "UNIVERSE FILTER: %s skipped. Missing exchange_suffix in JSON record %s.",
+                        symbol,
+                        idx,
+                    )
+                    continue
+                tickers.append(f"{symbol}.{exchange_suffix}")
             
             logger.info(f"Loaded {len(tickers)} tickers from {json_path}")
             return tickers
@@ -223,8 +232,26 @@ class TickerLoader:
             except Exception as e:
                 logger.critical(f"Could not construct ticker universe from live sources: {e}")
                 return []
+
+        deduped_list = []
+        seen_tickers = set()
+        for ticker in final_list:
+            if ticker in seen_tickers:
+                logger.info("UNIVERSE FILTER: %s skipped as duplicate ticker.", ticker)
+                continue
+            seen_tickers.add(ticker)
+            deduped_list.append(ticker)
+        final_list = deduped_list
         
         logger.info(f"Total Unique Tickers to Scan: {len(final_list)}")
+        if not final_list:
+            source_desc = settings.json_universe_file_path if settings.USE_JSON_UNIVERSE else "live NSE/BSE feeds"
+            logger.warning(
+                "Ticker universe resolved to 0 symbols. use_json_universe=%s source=%s cache_file=%s",
+                settings.USE_JSON_UNIVERSE,
+                source_desc,
+                TickerLoader.CACHE_FILE,
+            )
 
         # Cache the final list for the day.
         with open(TickerLoader.CACHE_FILE, "w") as f:
