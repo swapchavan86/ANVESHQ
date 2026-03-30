@@ -1,1 +1,2 @@
 TCS.NS
+INFOSYS.NS
