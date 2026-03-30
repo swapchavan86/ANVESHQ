@@ -8,6 +8,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    Enum,
     Float,
     ForeignKey,
     Index,
@@ -23,9 +24,20 @@ class Base(DeclarativeBase):
 
 
 class UserRole(str, enum.Enum):
+    SUPER_ADMIN = "super_admin"
     ADMIN = "admin"
     USER = "user"
-    SUBSCRIBER = "subscriber"
+
+
+class SubscriptionTier(str, enum.Enum):
+    FREE = "free"
+    PRO = "pro"
+    ELITE = "elite"
+
+
+class PaymentProvider(str, enum.Enum):
+    STRIPE = "stripe"
+    RAZORPAY = "razorpay"
 
 
 class MomentumStock(Base):
@@ -74,20 +86,46 @@ class MomentumStock(Base):
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        Index("ix_users_role", "role"),
+        Index("ix_users_current_tier", "current_tier"),
+        Index("ix_users_subscription_expiry", "subscription_expiry"),
+        Index("ix_users_delegated_by_id", "delegated_by_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    username: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     email: Mapped[str] = mapped_column(String(100), unique=True, index=True)
-    hashed_password: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[UserRole] = mapped_column(
+        Enum(UserRole, native_enum=False, values_callable=lambda members: [member.value for member in members]),
+        default=UserRole.USER,
+        nullable=False,
+    )
+    current_tier: Mapped[SubscriptionTier] = mapped_column(
+        Enum(SubscriptionTier, native_enum=False, values_callable=lambda members: [member.value for member in members]),
+        default=SubscriptionTier.FREE,
+        nullable=False,
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    delegated_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    stripe_customer_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True, nullable=True, index=True)
+    subscription_expiry: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    telegram_chat_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
 
-    first_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    last_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    phone: Mapped[Optional[str]] = mapped_column(String(15), unique=True, nullable=True, index=True)
-
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
-    is_google_user: Mapped[bool] = mapped_column(Boolean, default=False)
-    role: Mapped[UserRole] = mapped_column(String, default=UserRole.USER)
+    delegated_by: Mapped[Optional["User"]] = relationship(
+        "User",
+        remote_side=[id],
+        back_populates="delegated_users",
+    )
+    delegated_users: Mapped[List["User"]] = relationship(
+        "User",
+        back_populates="delegated_by",
+        cascade="save-update",
+    )
+    subscription_events: Mapped[List["SubscriptionEvent"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, onupdate=func.now(), server_default=func.now())
@@ -110,6 +148,35 @@ class VerificationCode(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     user: Mapped["User"] = relationship(back_populates="verifications")
+
+
+class SubscriptionEvent(Base):
+    __tablename__ = "subscription_events"
+    __table_args__ = (
+        Index("ix_subscription_events_user_id", "user_id"),
+        Index("ix_subscription_events_provider", "provider"),
+        Index("ix_subscription_events_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    provider: Mapped[PaymentProvider] = mapped_column(
+        Enum(PaymentProvider, native_enum=False, values_callable=lambda members: [member.value for member in members]),
+        nullable=False,
+    )
+    external_customer_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    external_subscription_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    external_session_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    tier: Mapped[SubscriptionTier] = mapped_column(
+        Enum(SubscriptionTier, native_enum=False, values_callable=lambda members: [member.value for member in members]),
+        nullable=False,
+    )
+    event_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    payload: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="subscription_events")
 
 
 class Error(Base):

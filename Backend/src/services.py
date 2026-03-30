@@ -1,10 +1,13 @@
 import logging
+import asyncio
 import datetime
 from datetime import date
 import zoneinfo
 import yfinance as yf
 import pandas as pd
+import httpx
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from sqlalchemy import select, desc, asc
 from sqlalchemy.orm import Session
 from src.config import get_settings
@@ -28,6 +31,15 @@ logging.getLogger("yfinance").setLevel(logging.ERROR)
 
 CACHE_FILE = "fundamentals_cache.json"
 CACHE_EXPIRY_DAYS = 7
+
+
+@dataclass
+class MarketDataFetchResult:
+    symbol: str
+    df: pd.DataFrame
+    merge_info: dict[str, str | int | None]
+    company_name: str | None = None
+    error: str | None = None
 
 # --- CLASS 1: RISK AND QUALITY ANALYSIS ---
 class RiskAndQualityAnalyzer:
@@ -438,6 +450,124 @@ class StockFetcher:
         return MarketValidator.coerce_to_market_date(biz_dates.max(), settings_obj)
 
     @staticmethod
+    def _build_market_data_headers() -> dict[str, str]:
+        return {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            )
+        }
+
+    @staticmethod
+    async def fetch_symbol_market_data_async(
+        symbol: str,
+        settings_obj,
+        bhavcopy_df: pd.DataFrame | None = None,
+        client: httpx.AsyncClient | None = None,
+    ) -> MarketDataFetchResult:
+        if client is not None:
+            return await StockFetcher._fetch_symbol_market_data_with_client(symbol, settings_obj, bhavcopy_df, client)
+
+        async with httpx.AsyncClient(
+            timeout=settings_obj.HTTPX_TIMEOUT_SECONDS,
+            follow_redirects=True,
+            headers=StockFetcher._build_market_data_headers(),
+        ) as async_client:
+            return await StockFetcher._fetch_symbol_market_data_with_client(symbol, settings_obj, bhavcopy_df, async_client)
+
+    @staticmethod
+    async def _fetch_symbol_market_data_with_client(
+        symbol: str,
+        settings_obj,
+        bhavcopy_df: pd.DataFrame | None,
+        client: httpx.AsyncClient,
+    ) -> MarketDataFetchResult:
+        try:
+            response = await client.get(
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
+                params={
+                    "range": "1y",
+                    "interval": "1d",
+                    "includePrePost": "false",
+                    "events": "div,splits",
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+            chart_result = (payload.get("chart") or {}).get("result") or []
+            if not chart_result:
+                return MarketDataFetchResult(
+                    symbol=symbol,
+                    df=pd.DataFrame(),
+                    merge_info={"source": "yahoo_chart_empty", "yf_last_date": None, "bhavcopy_date": None, "final_last_date": None, "row_count": 0},
+                    error="Yahoo chart response did not include market data.",
+                )
+
+            result = chart_result[0]
+            meta = result.get("meta") or {}
+            quote = ((result.get("indicators") or {}).get("quote") or [{}])[0]
+            adjclose_list = ((result.get("indicators") or {}).get("adjclose") or [{}])[0].get("adjclose")
+            timestamps = result.get("timestamp") or []
+
+            if not timestamps:
+                raw_df = pd.DataFrame()
+            else:
+                raw_df = pd.DataFrame(
+                    {
+                        "Open": quote.get("open", []),
+                        "High": quote.get("high", []),
+                        "Low": quote.get("low", []),
+                        "Close": quote.get("close", []),
+                        "Volume": quote.get("volume", []),
+                    },
+                    index=pd.to_datetime(timestamps, unit="s", utc=True),
+                )
+                if adjclose_list and len(adjclose_list) == len(raw_df):
+                    raw_df["Close"] = adjclose_list
+                raw_df = raw_df.dropna(how="all")
+
+            merge_source_df = bhavcopy_df if bhavcopy_df is not None else pd.DataFrame()
+            df, merge_info = StockFetcher._merge_market_data(symbol, raw_df, merge_source_df, settings_obj)
+            company_name = meta.get("longName") or meta.get("shortName") or meta.get("symbol")
+            if isinstance(company_name, str):
+                company_name = company_name.strip() or None
+            return MarketDataFetchResult(
+                symbol=symbol,
+                df=df,
+                merge_info=merge_info,
+                company_name=company_name,
+            )
+        except Exception as exc:
+            return MarketDataFetchResult(
+                symbol=symbol,
+                df=pd.DataFrame(),
+                merge_info={"source": "fetch_error", "yf_last_date": None, "bhavcopy_date": None, "final_last_date": None, "row_count": 0},
+                error=f"{type(exc).__name__}: {exc}",
+            )
+
+    @staticmethod
+    async def _fetch_batch_market_data_async(
+        batch_tickers: list[str],
+        settings_obj,
+        bhavcopy_df: pd.DataFrame,
+    ) -> list[MarketDataFetchResult]:
+        if not batch_tickers:
+            return []
+
+        semaphore = asyncio.Semaphore(min(25, max(5, len(batch_tickers))))
+
+        async with httpx.AsyncClient(
+            timeout=settings_obj.HTTPX_TIMEOUT_SECONDS,
+            follow_redirects=True,
+            headers=StockFetcher._build_market_data_headers(),
+        ) as client:
+            async def fetch_symbol(symbol: str) -> MarketDataFetchResult:
+                async with semaphore:
+                    return await StockFetcher._fetch_symbol_market_data_with_client(symbol, settings_obj, bhavcopy_df, client)
+
+            return await asyncio.gather(*(fetch_symbol(symbol) for symbol in batch_tickers))
+
+    @staticmethod
     def _merge_market_data(
         symbol: str,
         df_yf: pd.DataFrame,
@@ -540,25 +670,41 @@ class StockFetcher:
                 except Exception as e:
                     logger.warning(f"Could not prefetch existing ranks for batch {batch_id}: {e}")
                     existing_today_symbols = set()
+                symbols_to_fetch = [symbol for symbol in batch_tickers if symbol not in existing_today_symbols]
+                fetched_results = asyncio.run(
+                    StockFetcher._fetch_batch_market_data_async(symbols_to_fetch, settings_obj, bhavcopy_df)
+                ) if symbols_to_fetch else []
+                fetch_result_map = {result.symbol: result for result in fetched_results}
+
                 for symbol in batch_tickers:
                     try:
                         if symbol in existing_today_symbols:
                             logger.info(f"SKIP {symbol}: already updated today (idempotent scan).")
                             qualified_symbols.add(symbol)
                             continue
-                        df_yf = yf.download(symbol, period="1y", progress=False, auto_adjust=True, timeout=10)
-                        
-                        # Flatten MultiIndex columns if present (fix for yfinance returning (Price, Ticker) columns)
-                        if isinstance(df_yf.columns, pd.MultiIndex):
-                            df_yf.columns = df_yf.columns.get_level_values(0)
-                        
-                        # FIX: Remove duplicate columns (caused by flattening MultiIndex sometimes)
-                        df_yf = df_yf.loc[:, ~df_yf.columns.duplicated()]
-                        
-                        # FIX: Remove duplicate index dates (clean up yfinance data)
-                        df_yf = df_yf[~df_yf.index.duplicated(keep='last')]
+                        fetch_result = fetch_result_map.get(symbol)
+                        if fetch_result is None:
+                            logger.info("SKIP %s: Async market data fetch returned no result.", symbol)
+                            continue
+                        if fetch_result.error:
+                            logger.error("Error processing %s: %s", symbol, fetch_result.error)
+                            try:
+                                ErrorLogger.log_error(
+                                    session,
+                                    "Async Market Data Fetch Error",
+                                    details={"symbol": symbol, "batch_id": batch_id, "error": fetch_result.error},
+                                )
+                            except Exception as log_exc:
+                                logger.warning(
+                                    "Failed to write async fetch error for %s in batch %s: %s",
+                                    symbol,
+                                    batch_id,
+                                    log_exc,
+                                )
+                            continue
 
-                        df, merge_info = StockFetcher._merge_market_data(symbol, df_yf, bhavcopy_df, settings_obj)
+                        df = fetch_result.df
+                        merge_info = fetch_result.merge_info
                         logger.info(
                             "DATA MERGE %s: source=%s yf_last_date=%s bhavcopy_date=%s final_last_date=%s rows=%s expected_market_date=%s",
                             symbol,
@@ -635,14 +781,7 @@ class StockFetcher:
                         risk_score, risk_reasons = RiskAndQualityAnalyzer.calculate_risk_score(df, current_close, high_52)
                         logger.info(f"QUALIFIED: {symbol} | Price: {current_close:.2f} | Risk: {risk_score} ({', '.join(risk_reasons)})")
                         
-                        company_name = None
-                        try:
-                            info = yf.Ticker(symbol).info
-                            company_name = (info.get("shortName") or info.get("longName")) if info else None
-                            if isinstance(company_name, str):
-                                company_name = company_name.strip() or None
-                        except Exception as company_name_exc:
-                            logger.warning("Company name lookup failed for %s: %s", symbol, company_name_exc)
+                        company_name = fetch_result.company_name
                         
                         high_date_idx = df['High'].idxmax()
                         high_date = high_date_idx.date() if isinstance(high_date_idx, pd.Timestamp) else high_date_idx
@@ -777,6 +916,13 @@ class StockFetcher:
         with get_db_context() as session:
             engine_svc = RankingEngine(session, current_settings)
             engine_svc.decay_unseen_ranks(all_qualified_symbols)
+        if all_qualified_symbols:
+            try:
+                from src.premium.notifications import NotificationManager
+
+                NotificationManager.schedule_tiered_alerts(all_qualified_symbols, current_settings)
+            except Exception as notification_exc:
+                logger.error("Failed to schedule tiered alerts: %s", notification_exc, exc_info=True)
         logger.info("Fluxmind scan complete.")
 
 # --- CLASS 4: VALIDATOR ---

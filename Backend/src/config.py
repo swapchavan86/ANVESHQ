@@ -49,6 +49,30 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     APP_NAME: str = "Anveshq"
     TIMEZONE: str = "Asia/Kolkata"
+    API_TITLE: str = "Anveshq Market Intelligence API"
+    API_VERSION: str = "1.0.0"
+    API_PREFIX: str = "/api"
+    API_CORS_ORIGINS: str = "http://localhost:4200,http://127.0.0.1:4200"
+    API_CACHE_TTL_SECONDS: int = 120
+    HTTPX_TIMEOUT_SECONDS: float = 20.0
+
+    # Auth & subscription settings.
+    JWT_SECRET_KEY: str = "change-me-in-env"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 60
+    DEFAULT_FREE_DELAY_HOURS: int = 24
+
+    # Payments.
+    PAYMENT_SUCCESS_URL: str = "http://localhost:4200/billing/success"
+    PAYMENT_CANCEL_URL: str = "http://localhost:4200/billing/cancel"
+    STRIPE_API_KEY: str | None = None
+    STRIPE_WEBHOOK_SECRET: str | None = None
+    RAZORPAY_KEY_ID: str | None = None
+    RAZORPAY_KEY_SECRET: str | None = None
+    RAZORPAY_WEBHOOK_SECRET: str | None = None
+
+    # Notifications.
+    TELEGRAM_BOT_TOKEN: str | None = None
 
     # Universe source URLs.
     NSE_EQUITY_LIST_URL: str = "https://archives.nseindia.com/content/equities/EQUITY_L.csv"
@@ -119,6 +143,29 @@ class Settings(BaseSettings):
             normalized = value.strip().strip('"').strip("'")
             return normalized or None
         return value
+
+    @field_validator(
+        "JWT_SECRET_KEY",
+        "STRIPE_API_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+        "RAZORPAY_KEY_ID",
+        "RAZORPAY_KEY_SECRET",
+        "RAZORPAY_WEBHOOK_SECRET",
+        "TELEGRAM_BOT_TOKEN",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_secret(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            normalized = value.strip().strip('"').strip("'")
+            return normalized or None
+        return value
+
+    @property
+    def api_cors_origins(self) -> list[str]:
+        return [origin.strip() for origin in self.API_CORS_ORIGINS.split(",") if origin.strip()]
 
     @property
     def database_file_path(self) -> str:
