@@ -5,13 +5,12 @@ import urllib.parse
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
-import yfinance as yf
 import pandas as pd
 from sqlalchemy.orm import Session
 from src.database import get_database_size, get_db_context
 from src.models import MomentumStock
 from src.config import get_settings
-from src.yahoo_finance import get_ticker
+from src.yahoo_finance import download_history, get_fast_info, get_info, get_ticker
 from src.services import RiskAndQualityAnalyzer
 from sqlalchemy import select, desc, asc
 import datetime
@@ -254,7 +253,7 @@ def _get_fundamentals(symbol: str, current_price: float | None = None) -> dict:
     info = {}
     try:
         ticker = get_ticker(symbol)
-        info = ticker.info or {}
+        info = get_info(symbol, ticker=ticker)
     except Exception:
         info = {}
 
@@ -268,7 +267,7 @@ def _get_fundamentals(symbol: str, current_price: float | None = None) -> dict:
     fast_info = None
     if ticker is not None:
         try:
-            fast_info = ticker.fast_info
+            fast_info = get_fast_info(symbol, ticker=ticker)
         except Exception:
             fast_info = None
 
@@ -308,7 +307,7 @@ def _get_fundamentals(symbol: str, current_price: float | None = None) -> dict:
 
     if (market_cap is None or pe_ratio is None or debt_to_equity is None or not sector):
         try:
-            direct_info = yf.Ticker(symbol).get_info()
+            direct_info = get_info(symbol)
             if isinstance(direct_info, dict):
                 market_cap = market_cap or direct_info.get("marketCap")
                 pe_ratio = pe_ratio or direct_info.get("trailingPE") or direct_info.get("forwardPE")
@@ -485,7 +484,7 @@ def _get_market_snapshot(symbol: str) -> dict:
     }
 
     try:
-        df = yf.download(symbol, period="1y", interval="1d", progress=False, auto_adjust=False)
+        df = download_history(symbol, period="1y", interval="1d", auto_adjust=False)
         if df is None or df.empty:
             _market_cache[symbol] = snapshot
             return snapshot
@@ -1060,7 +1059,12 @@ def calculate_roi(symbol: str) -> float | None:
     last_friday = last_monday + datetime.timedelta(days=4)
     
     try:
-        df = yf.download(symbol, start=last_monday, end=last_friday + datetime.timedelta(days=1), progress=False)
+        df = download_history(
+            symbol,
+            start=last_monday,
+            end=last_friday + datetime.timedelta(days=1),
+            auto_adjust=False,
+        )
         if len(df) < 2:
             return None
         # Flatten MultiIndex columns if present (yfinance can return Series for single column)

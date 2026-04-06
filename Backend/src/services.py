@@ -2,7 +2,6 @@ import logging
 import datetime
 from datetime import date
 import zoneinfo
-import yfinance as yf
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from sqlalchemy import select, desc, asc
@@ -11,6 +10,7 @@ from src.config import get_settings
 from src.models import MomentumStock, Error
 from src.database import get_db_context
 from src.utils import Bhavcopy
+from src.yahoo_finance import download_history, get_company_name, get_fast_info, get_info, get_ticker
 import secrets
 import string
 import time
@@ -24,7 +24,7 @@ import math
 
 logger = logging.getLogger("Anveshq")
 logger.setLevel(logging.INFO)
-logging.getLogger("yfinance").setLevel(logging.ERROR)
+logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
 CACHE_FILE = "fundamentals_cache.json"
 CACHE_EXPIRY_DAYS = 7
@@ -192,15 +192,16 @@ class RiskAndQualityAnalyzer:
             info = None
 
         if info is None:
+            ticker = None
             try:
-                ticker = yf.Ticker(symbol)
-                info = ticker.info
+                ticker = get_ticker(symbol)
+                info = get_info(symbol, ticker=ticker)
                 if not info: # yfinance can return an empty dict
                     raise ValueError("yfinance returned empty info dict")
             except Exception as e:
                 # Try fast_info as a partial fallback for Market Cap (more robust than info)
                 try:
-                    fast_info = ticker.fast_info
+                    fast_info = get_fast_info(symbol, ticker=ticker)
                     mcap = fast_info.get('marketCap')
                     if mcap:
                         info = {'marketCap': mcap, 'trailingPE': None, 'debtToEquity': None}
@@ -546,7 +547,7 @@ class StockFetcher:
                             logger.info(f"SKIP {symbol}: already updated today (idempotent scan).")
                             qualified_symbols.add(symbol)
                             continue
-                        df_yf = yf.download(symbol, period="1y", progress=False, auto_adjust=True, timeout=10)
+                        df_yf = download_history(symbol, period="1y", auto_adjust=True, timeout=10)
                         
                         # Flatten MultiIndex columns if present (fix for yfinance returning (Price, Ticker) columns)
                         if isinstance(df_yf.columns, pd.MultiIndex):
@@ -637,10 +638,7 @@ class StockFetcher:
                         
                         company_name = None
                         try:
-                            info = yf.Ticker(symbol).info
-                            company_name = (info.get("shortName") or info.get("longName")) if info else None
-                            if isinstance(company_name, str):
-                                company_name = company_name.strip() or None
+                            company_name = get_company_name(symbol)
                         except Exception as company_name_exc:
                             logger.warning("Company name lookup failed for %s: %s", symbol, company_name_exc)
                         

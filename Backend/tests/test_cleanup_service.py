@@ -11,7 +11,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from src.cleanup_service import cleanup_error_logs, cleanup_old_master_files, cleanup_old_momentum_records
 from src.config import get_settings
-from src.database import get_db_context, get_engine, reset_db_components
+from src.database import get_db_context, get_engine, reset_db_components, _load_sqlcipher_dbapi
 from src.models import Base, Error, MomentumStock
 
 
@@ -115,3 +115,40 @@ def test_cleanup_old_master_files_keeps_latest_and_recent(configured_environment
     assert latest.exists()
     remaining_snapshots = sorted(path.name for path in master_dir.glob("master-*.json"))
     assert len(remaining_snapshots) == 3  # latest + 2 snapshot files
+
+
+def test_dev_mode_recovers_from_invalid_sqlcipher_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    sqlcipher_dbapi = _load_sqlcipher_dbapi()
+    if sqlcipher_dbapi is None:
+        pytest.skip("SQLCipher DBAPI is not installed")
+
+    db_path = tmp_path / "dev_encrypted.db"
+    master_dir = tmp_path / "master"
+    master_dir.mkdir(parents=True, exist_ok=True)
+
+    connection = sqlcipher_dbapi.connect(str(db_path))
+    cursor = connection.cursor()
+    cursor.execute("PRAGMA key='correct-password'")
+    cursor.execute("CREATE TABLE sample(id INTEGER PRIMARY KEY)")
+    connection.commit()
+    cursor.close()
+    connection.close()
+
+    monkeypatch.setenv("MODE", "DEV")
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+    monkeypatch.setenv("TEST_DATABASE_PATH", str(db_path))
+    monkeypatch.setenv("DB_PASSWORD", "wrong-password")
+    monkeypatch.setenv("MASTER_DATA_DIRECTORY", str(master_dir))
+    monkeypatch.setenv("JSON_UNIVERSE_PATH", str(master_dir / "master-latest.json"))
+
+    get_settings.cache_clear()
+    reset_db_components()
+
+    Base.metadata.create_all(bind=get_engine())
+
+    backup_files = list(tmp_path.glob("dev_encrypted.db.invalid_key_backup_*"))
+    assert len(backup_files) == 1
+    assert db_path.exists()
+
+    reset_db_components()
+    get_settings.cache_clear()

@@ -14,6 +14,8 @@ from src.config import get_settings
 from src.database import get_db_context, get_engine, reset_db_components
 from src.models import Base, MomentumStock
 from src.services import MarketValidator, RankingEngine, RiskAndQualityAnalyzer, StockFetcher
+from src.utils import Bhavcopy
+from src.yahoo_finance import download_history, get_info, is_recoverable_yahoo_error
 
 
 @pytest.fixture
@@ -90,6 +92,75 @@ def test_merge_market_data_prefers_bhavcopy_row_on_same_day(configured_environme
     assert len(merged_df) == 1
     assert float(merged_df["Close"].iloc[-1]) == 109.0
     assert merge_info["source"] == "bhavcopy_replaced_same_day_row"
+
+
+def test_bhavcopy_url_generation_accepts_legacy_placeholder(configured_environment, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv(
+        "BHAVCOPY_URL_TEMPLATE",
+        "https://example.com/BhavCopy_{YYYYMMDD}.csv.zip",
+    )
+    get_settings.cache_clear()
+
+    assert Bhavcopy.get_bhavcopy_url_for_date(dt.date(2026, 4, 6)) == (
+        "https://example.com/BhavCopy_20260406.csv.zip"
+    )
+
+
+def test_bhavcopy_url_generation_keeps_backward_compatibility_for_date_placeholder(
+    configured_environment, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv(
+        "BHAVCOPY_URL_TEMPLATE",
+        "https://example.com/BhavCopy_{date}.csv.zip",
+    )
+    get_settings.cache_clear()
+
+    assert Bhavcopy.get_bhavcopy_url_for_date(dt.date(2026, 4, 6)) == (
+        "https://example.com/BhavCopy_20260406.csv.zip"
+    )
+
+
+def test_yahoo_download_history_returns_empty_dataframe_on_401(monkeypatch: pytest.MonkeyPatch):
+    def raise_unauthorized(*args, **kwargs):
+        raise Exception(
+            'HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"User is unable to access this feature"}}}'
+        )
+
+    monkeypatch.setattr("src.yahoo_finance.yf.download", raise_unauthorized)
+
+    result = download_history("ABC.NS", period="1y")
+
+    assert result.empty
+
+
+def test_yahoo_get_info_returns_empty_dict_on_401(monkeypatch: pytest.MonkeyPatch):
+    class FakeTicker:
+        def get_info(self):
+            raise Exception(
+                'HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"User is unable to access this feature"}}}'
+            )
+
+    monkeypatch.setattr("src.yahoo_finance.get_ticker", lambda symbol: FakeTicker())
+
+    result = get_info("ABC.NS")
+
+    assert result == {}
+
+
+def test_yahoo_get_info_returns_empty_dict_on_rate_limit(monkeypatch: pytest.MonkeyPatch):
+    class FakeTicker:
+        def get_info(self):
+            raise Exception("YFRateLimitError('Too Many Requests. Rate limited. Try after a while.')")
+
+    monkeypatch.setattr("src.yahoo_finance.get_ticker", lambda symbol: FakeTicker())
+
+    result = get_info("ABC.NS")
+
+    assert result == {}
+
+
+def test_invalid_crumb_is_treated_as_recoverable_yahoo_error():
+    assert is_recoverable_yahoo_error(Exception("Invalid Crumb"))
 
 
 def test_relative_liquidity_check_accepts_150_day_history(configured_environment):

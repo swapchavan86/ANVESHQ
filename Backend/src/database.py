@@ -2,8 +2,10 @@ import logging
 import os
 import sqlite3
 import time
+from datetime import datetime
 from contextlib import contextmanager
 import gc
+import shutil
 from types import ModuleType
 
 from sqlalchemy import create_engine, event, text
@@ -53,6 +55,24 @@ def _sql_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+@contextmanager
+def _suppress_native_stderr():
+    """Temporarily silence native stderr output from SQLCipher key probes."""
+    devnull_fd = None
+    stderr_fd_copy = None
+    try:
+        devnull_fd = os.open(os.devnull, os.O_WRONLY)
+        stderr_fd_copy = os.dup(2)
+        os.dup2(devnull_fd, 2)
+        yield
+    finally:
+        if stderr_fd_copy is not None:
+            os.dup2(stderr_fd_copy, 2)
+            os.close(stderr_fd_copy)
+        if devnull_fd is not None:
+            os.close(devnull_fd)
+
+
 def _ensure_password_configuration(settings) -> None:
     if settings.MODE != "TEST" and not settings.DB_PASSWORD:
         raise RuntimeError(
@@ -94,6 +114,35 @@ def _cleanup_sqlite_sidecar_files(file_path: str) -> None:
         sidecar_file = f"{file_path}{suffix}"
         if os.path.exists(sidecar_file):
             os.remove(sidecar_file)
+
+
+def _backup_database_with_sidecars(file_path: str, suffix: str) -> str | None:
+    if not os.path.exists(file_path):
+        return None
+
+    backup_file = f"{file_path}.{suffix}"
+    try:
+        _replace_file_with_retry(file_path, backup_file, retries=20, delay_seconds=0.25)
+    except PermissionError:
+        shutil.copy2(file_path, backup_file)
+        os.remove(file_path)
+
+    for sidecar_suffix in ("-wal", "-shm"):
+        sidecar_file = f"{file_path}{sidecar_suffix}"
+        if os.path.exists(sidecar_file):
+            backup_sidecar = f"{backup_file}{sidecar_suffix}"
+            try:
+                _replace_file_with_retry(
+                    sidecar_file,
+                    backup_sidecar,
+                    retries=20,
+                    delay_seconds=0.25,
+                )
+            except PermissionError:
+                shutil.copy2(sidecar_file, backup_sidecar)
+                os.remove(sidecar_file)
+
+    return backup_file
 
 
 def _replace_file_with_retry(source_file: str, target_file: str, retries: int = 5, delay_seconds: float = 0.2) -> None:
@@ -144,6 +193,43 @@ def _migrate_plaintext_to_sqlcipher(file_path: str, password: str) -> None:
     _cleanup_sqlite_sidecar_files(file_path)
 
 
+def _can_open_sqlcipher_database(file_path: str, password: str) -> bool:
+    if not os.path.exists(file_path):
+        return True
+
+    sqlcipher_dbapi = _load_sqlcipher_dbapi()
+    if sqlcipher_dbapi is None:
+        return False
+
+    connection = None
+    try:
+        with _suppress_native_stderr():
+            connection = sqlcipher_dbapi.connect(file_path)
+            cursor = connection.cursor()
+            cursor.execute(f"PRAGMA key={_sql_literal(password)}")
+            cursor.execute("SELECT count(*) FROM sqlite_master")
+            cursor.fetchone()
+            cursor.close()
+        return True
+    except Exception:
+        return False
+    finally:
+        if connection is not None:
+            connection.close()
+
+
+def _handle_unreadable_encrypted_database(settings, db_path: str) -> None:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_suffix = f"invalid_key_backup_{timestamp}"
+    backup_file = _backup_database_with_sidecars(db_path, backup_suffix)
+    logger.warning(
+        "DEV recovery: existing encrypted DB could not be opened with the configured DB_PASSWORD. "
+        "Backed it up to %s and creating a fresh database at %s.",
+        backup_file,
+        db_path,
+    )
+
+
 def _prepare_database_file(settings, db_path: str) -> None:
     _ensure_password_configuration(settings)
     _ensure_sqlcipher_dependency(settings)
@@ -153,6 +239,16 @@ def _prepare_database_file(settings, db_path: str) -> None:
         logger.warning("Detected plaintext SQLite DB. Encrypting file with SQLCipher at %s", db_path)
         _migrate_plaintext_to_sqlcipher(db_path, settings.DB_PASSWORD)
         logger.info("SQLite DB encryption completed at %s", db_path)
+        return
+
+    if not _can_open_sqlcipher_database(db_path, settings.DB_PASSWORD):
+        if settings.MODE == "DEV":
+            _handle_unreadable_encrypted_database(settings, db_path)
+            return
+        raise RuntimeError(
+            "Database authentication failed before engine startup. "
+            "Verify DB_PASSWORD matches the encrypted database."
+        )
 
 
 def _validate_database_access() -> None:
@@ -165,6 +261,55 @@ def _validate_database_access() -> None:
         ) from exc
 
 
+def _create_engine_instance(settings):
+    return create_engine(
+        settings.active_database_url,
+        connect_args={"check_same_thread": False, "timeout": 30},
+        poolclass=QueuePool,
+        pool_size=20,
+        max_overflow=40,
+        pool_timeout=30,
+        pool_pre_ping=True,
+    )
+
+
+def _configure_engine(engine) -> None:
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(dbapi_connection, connection_record):  # noqa: ARG001
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA cache_size=-10000")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA temp_store=MEMORY")
+        cursor.close()
+
+
+def _recover_dev_database_from_auth_failure(settings, db_path: str, exc: RuntimeError) -> bool:
+    if settings.MODE != "DEV" or not settings.DB_PASSWORD or not os.path.exists(db_path):
+        return False
+
+    global _engine, _SessionLocal
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_suffix = f"invalid_key_backup_{timestamp}"
+
+    if _engine is not None:
+        _engine.dispose()
+    _engine = None
+    _SessionLocal = None
+
+    backup_file = _backup_database_with_sidecars(db_path, backup_suffix)
+    logger.warning(
+        "DEV recovery: existing encrypted DB could not be opened with the configured DB_PASSWORD. "
+        "Backed it up to %s and creating a fresh database at %s. Original error: %s",
+        backup_file,
+        db_path,
+        exc,
+    )
+    return True
+
+
 def _initialize_db_components() -> None:
     global _engine, _SessionLocal
     if _engine is not None and _SessionLocal is not None:
@@ -175,28 +320,18 @@ def _initialize_db_components() -> None:
     _ensure_parent_directory(db_path)
     _prepare_database_file(settings, db_path)
 
-    _engine = create_engine(
-        settings.active_database_url,
-        connect_args={"check_same_thread": False, "timeout": 30},
-        poolclass=QueuePool,
-        pool_size=20,
-        max_overflow=40,
-        pool_timeout=30,
-        pool_pre_ping=True,
-    )
-
-    @event.listens_for(_engine, "connect")
-    def _set_sqlite_pragmas(dbapi_connection, connection_record):  # noqa: ARG001
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA synchronous=NORMAL")
-        cursor.execute("PRAGMA cache_size=-10000")
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.execute("PRAGMA temp_store=MEMORY")
-        cursor.close()
-
+    _engine = _create_engine_instance(settings)
+    _configure_engine(_engine)
     _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
-    _validate_database_access()
+    try:
+        _validate_database_access()
+    except RuntimeError as exc:
+        if not _recover_dev_database_from_auth_failure(settings, db_path, exc):
+            raise
+        _engine = _create_engine_instance(settings)
+        _configure_engine(_engine)
+        _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
+        _validate_database_access()
 
 
 def reset_db_components() -> None:

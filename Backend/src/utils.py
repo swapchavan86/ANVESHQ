@@ -264,11 +264,23 @@ class Bhavcopy:
     BHAVCOPY_CACHE_FILE = "bhavcopy_cache.csv"
 
     @staticmethod
-    def get_bhavcopy_url_for_date(trade_date: datetime.date) -> str:
+    def _build_bhavcopy_url(trade_date: datetime.date, settings_obj=None) -> str:
         """Constructs the Bhavcopy URL for a given date."""
-        settings = get_settings()
+        settings = settings_obj or get_settings()
+        template = getattr(settings, "BHAVCOPY_URL_TEMPLATE", None)
+        if not template:
+            raise ValueError("BHAVCOPY_URL_TEMPLATE is not configured.")
         date_str = trade_date.strftime("%Y%m%d")
-        return settings.BHAVCOPY_URL_TEMPLATE.format(date=date_str)
+        try:
+            return template.format(YYYYMMDD=date_str, yyyymmdd=date_str, date=date_str)
+        except KeyError as exc:
+            raise ValueError(
+                "Invalid BHAVCOPY_URL_TEMPLATE placeholder. Use {YYYYMMDD}."
+            ) from exc
+
+    @staticmethod
+    def get_bhavcopy_url_for_date(trade_date: datetime.date) -> str:
+        return Bhavcopy._build_bhavcopy_url(trade_date)
 
     @staticmethod
     def is_bhavcopy_available_for_date(trade_date: datetime.date, settings_obj=None) -> bool:
@@ -281,10 +293,8 @@ class Bhavcopy:
             logger.warning("BHAVCOPY_URL_TEMPLATE is not configured.")
             return False
 
-        date_str = trade_date.strftime("%Y%m%d")
-        url = settings.BHAVCOPY_URL_TEMPLATE.format(date=date_str)
-
         try:
+            url = Bhavcopy._build_bhavcopy_url(trade_date, settings)
             with requests.Session() as session:
                 session.headers.update(TickerLoader.get_headers())
                 head_resp = session.head(url, timeout=15, allow_redirects=True)

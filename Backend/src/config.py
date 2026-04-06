@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     NSE_NIFTY500_CSV_URL: str = "https://archives.nseindia.com/content/indices/ind_nifty500list.csv"
     BSE_CM_CSV_URL: str = ""
     BHAVCOPY_URL_TEMPLATE: str = (
-        "https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date}_F_0000.csv.zip"
+        "https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{YYYYMMDD}_F_0000.csv.zip"
     )
 
     # Core scan settings.
@@ -118,6 +118,15 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             normalized = value.strip().strip('"').strip("'")
             return normalized or None
+        return value
+
+    @field_validator("BHAVCOPY_URL_TEMPLATE", mode="before")
+    @classmethod
+    def normalize_bhavcopy_url_template(cls, value):
+        if value is None:
+            return value
+        if isinstance(value, str):
+            return value.strip().strip('"').strip("'")
         return value
 
     @property

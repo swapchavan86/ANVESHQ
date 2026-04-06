@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 import requests
-import yfinance as yf
 from bs4 import BeautifulSoup
 from sqlalchemy import delete, func, select
 
@@ -23,6 +22,7 @@ from src.database import (
     vacuum_database,
 )
 from src.models import AppMetadata, Error, MomentumStock
+from src.yahoo_finance import download_history, get_fast_info
 
 logger = logging.getLogger("Anveshq.Cleanup")
 
@@ -263,15 +263,16 @@ def cleanup_old_master_files(dry_run: bool = False) -> MasterCleanupStats:
 
 
 def _has_yahoo_data(symbol: str) -> bool:
-    ticker = yf.Ticker(symbol)
-    history = ticker.history(period="1mo", interval="1d")
+    history = download_history(symbol, period="1mo", interval="1d", auto_adjust=False)
     if history is not None and not history.empty:
         return True
-    fast_info = getattr(ticker, "fast_info", None)
-    if isinstance(fast_info, dict):
+    try:
+        fast_info = get_fast_info(symbol)
         market_cap = fast_info.get("marketCap") or fast_info.get("market_cap")
         last_price = fast_info.get("lastPrice") or fast_info.get("last_price")
         return bool(market_cap or last_price)
+    except Exception:
+        return False
     return False
 
 
