@@ -320,6 +320,38 @@ def future_close(df: pd.DataFrame, signal_date: dt.date, horizon: int) -> tuple[
     return future_date, float(df["Close"].iloc[future_position])
 
 
+def compute_net_return(
+    gross_return_pct: float | None,
+    entry_price: float,
+    exit_price: float,
+    shares: int,
+    holding_days: int,
+    settings_obj=None,
+) -> float | None:
+    if gross_return_pct is None or entry_price <= 0 or exit_price <= 0 or shares <= 0:
+        return None
+
+    settings_obj = settings_obj or get_settings()
+    buy_value = entry_price * shares
+    sell_value = exit_price * shares
+    gross_pnl = sell_value - buy_value
+
+    brokerage_buy = buy_value * (settings_obj.BROKERAGE_PER_TRADE_PCT / 100)
+    brokerage_sell = sell_value * (settings_obj.BROKERAGE_PER_TRADE_PCT / 100)
+    brokerage_total = brokerage_buy + brokerage_sell
+    exchange_charges = (buy_value + sell_value) * (settings_obj.EXCHANGE_CHARGES_PCT / 100)
+    sebi_charges = (buy_value + sell_value) * (settings_obj.SEBI_CHARGES_PCT / 100)
+    gst = brokerage_total * (settings_obj.GST_ON_BROKERAGE_PCT / 100)
+    stamp_duty = buy_value * (settings_obj.STAMP_DUTY_BUY_PCT / 100)
+    stt = sell_value * (settings_obj.STT_SELL_SIDE_PCT / 100)
+    charges = brokerage_total + exchange_charges + sebi_charges + gst + stamp_duty + stt
+
+    taxable_profit = max(0.0, gross_pnl - charges)
+    tax = taxable_profit * (settings_obj.STCG_TAX_PCT / 100) if holding_days < 365 else 0.0
+    net_pnl = gross_pnl - charges - tax
+    return (net_pnl / buy_value) * 100
+
+
 def build_trade_row(
     stock: SimulatedMomentumStock,
     signal_date: dt.date,
@@ -347,6 +379,13 @@ def build_trade_row(
             ((close_price / entry_close) - 1.0) * 100.0
             if close_price is not None and entry_close not in (None, 0)
             else None
+        )
+        row[f"net_return_{horizon}d_pct"] = compute_net_return(
+            row[f"return_{horizon}d_pct"],
+            float(entry_close or 0),
+            float(close_price or 0),
+            shares=1,
+            holding_days=horizon,
         )
     return row
 

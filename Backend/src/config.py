@@ -66,6 +66,23 @@ class Settings(BaseSettings):
     STREAK_THRESHOLD_DAYS: int = 3
     STOP_LOSS_PCT: float = -8.0
     TAKE_PROFIT_PCT: float = 15.0
+    RS_FILTER_ENABLED: bool = True
+    RS_LOOKBACK_DAYS: int = 20
+    RS_MIN_OUTPERFORMANCE_PCT: float = 3.0
+    EARNINGS_EXCLUSION_ENABLED: bool = True
+    EARNINGS_BUFFER_DAYS_BEFORE: int = 7
+    EARNINGS_BUFFER_DAYS_AFTER: int = 3
+    TRAILING_STOP_PCT: float = 7.0
+    HARD_STOP_LOSS_PCT: float = 8.0
+    MIN_HOLDING_DAYS: int = 5
+    MAX_HOLDING_DAYS: int = 30
+    PORTFOLIO_CAPITAL: float = 1_000_000.0
+    MAX_POSITION_SIZE_PCT: float = 15.0
+    MIN_POSITION_SIZE_PCT: float = 5.0
+    MAX_PORTFOLIO_HEAT_PCT: float = 60.0
+    MAX_CONCURRENT_POSITIONS: int = 6
+    RISK_PER_TRADE_PCT: float = 1.5
+    PAPER_TRADING_ENABLED: bool = True
 
     # Filtering and ranking settings.
     NEAR_52_WEEK_HIGH_THRESHOLD: float = 0.90
@@ -80,6 +97,20 @@ class Settings(BaseSettings):
     DIVERSIFICATION_ENABLED: bool = True
     MAX_STOCKS_PER_SECTOR: int = 2
     MAX_SMALL_CAP_TOP_PICKS: int = 3
+    QUALITY_SCREEN_ENABLED: bool = True
+    QUALITY_MAX_PE: float = 25.0
+    QUALITY_MIN_ROE: float = 15.0
+    QUALITY_MAX_DEBT_TO_EQUITY: float = 0.5
+    QUALITY_MIN_PROMOTER_HOLDING_PCT: float = 40.0
+
+    # Backtest cost model for Indian equity delivery/swing trades.
+    BROKERAGE_PER_TRADE_PCT: float = 0.03
+    STT_SELL_SIDE_PCT: float = 0.1
+    EXCHANGE_CHARGES_PCT: float = 0.00345
+    SEBI_CHARGES_PCT: float = 0.0001
+    GST_ON_BROKERAGE_PCT: float = 18.0
+    STAMP_DUTY_BUY_PCT: float = 0.015
+    STCG_TAX_PCT: float = 20.0
 
     # Retention and cleanup settings.
     DATA_RETENTION_WEEKS: int = 104

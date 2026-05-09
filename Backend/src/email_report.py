@@ -9,6 +9,7 @@ import pandas as pd
 from sqlalchemy.orm import Session
 from src.database import get_database_size, get_db_context
 from src.models import MomentumStock
+from src.position_sizing import PositionSizer
 from src.config import get_settings
 from src.yahoo_finance import download_history, get_fast_info, get_info, get_ticker
 from src.services import RiskAndQualityAnalyzer
@@ -61,6 +62,12 @@ def _format_price(value: float | int | None) -> str:
         if formatted.endswith(".00"):
             return formatted[:-3]
         return formatted
+    return "--"
+
+
+def _format_inr_value(value: float | None) -> str:
+    if isinstance(value, (int, float)):
+        return _format_price(value)
     return "--"
 
 
@@ -730,6 +737,17 @@ def _build_top_pick_card_html(stock: MomentumStock) -> str:
     if rr_ratio != "--":
         rr_text = f"Approximately {rr_ratio} based on historical patterns"
 
+    position_shares = getattr(stock, "position_shares", None)
+    position_value = getattr(stock, "position_value", None)
+    position_size_pct = getattr(stock, "position_size_pct", None)
+    position_section = ""
+    if position_shares and position_value and position_size_pct is not None:
+        position_section = f"""
+        <div class="info-box">
+          <p><strong>Suggested Position:</strong> {position_shares:,} shares | <strong>Value:</strong> {_format_inr_value(position_value)} | <strong>Portfolio:</strong> {position_size_pct:.1f}% | <strong>Stop:</strong> {_format_price(stop_loss)}</p>
+        </div>
+        """
+
     ma_ema_lines = _combined_ma_ema_lines(
         price_above_20, price_above_50, price_above_ema20, price_above_ema50, ma_text, ema_text
     )
@@ -773,18 +791,19 @@ def _build_top_pick_card_html(stock: MomentumStock) -> str:
           </tr>
         </table>
 
-        <div class="analyst-section">
-          <div class="analyst-label">Research Observations</div>
-          <div class="analyst-content">
-            <p>Based on our analysis of publicly available data, we've identified several factors worth monitoring:</p>
-            <ul>
-              {"".join(f"<li>{item}</li>" for item in observation_points[:6])}
-            </ul>
-          </div>
-          <div class="info-box">
+	        <div class="analyst-section">
+	          <div class="analyst-label">Research Observations</div>
+	          <div class="analyst-content">
+	            <p>Based on our analysis of publicly available data, we've identified several factors worth monitoring:</p>
+	            <ul>
+	              {"".join(f"<li>{item}</li>" for item in observation_points[:6])}
+	            </ul>
+	          </div>
+	          {position_section}
+	          <div class="info-box">
 	            <p><strong>Observation Period:</strong> {time_horizon} | <strong>Potential Risk-Reward:</strong> {rr_text} | <strong>Observed Target:</strong> {_format_price(observed_target)}</p>
 	          </div>
-        </div>
+	        </div>
       </div>
     """
 
@@ -1093,6 +1112,17 @@ def generate_email_html(top_picks: list[MomentumStock], missed_opportunities: li
     """
 
     top_cards = "\n".join(_build_top_pick_card_html(stock) for stock in top_picks)
+    settings_obj = get_settings()
+    try:
+        with get_db_context() as session:
+            portfolio_heat = PositionSizer.get_portfolio_heat(session, settings_obj.PORTFOLIO_CAPITAL)
+    except Exception:
+        portfolio_heat = None
+    heat_html = (
+        f'<p class="disclaimer"><strong>Portfolio Heat:</strong> {portfolio_heat:.1f}% deployed capital.</p>'
+        if portfolio_heat is not None
+        else ""
+    )
     watchlist_section = ""
     if top_cards:
         watchlist_section = f"""
@@ -1101,6 +1131,7 @@ def generate_email_html(top_picks: list[MomentumStock], missed_opportunities: li
             Stocks on Our Research Watchlist
             <span class="educational-badge">For Educational Purposes</span>
           </h2>
+          {heat_html}
           {top_cards}
         </div>
         """
@@ -1126,7 +1157,7 @@ def generate_email_html(top_picks: list[MomentumStock], missed_opportunities: li
 
     db_size_mb = get_database_size()
     db_size_note = f"Database size: {db_size_mb:.3f} MB"
-    if db_size_mb > get_settings().DB_SIZE_WARNING_MB:
+    if db_size_mb > settings_obj.DB_SIZE_WARNING_MB:
         db_size_note += " (WARNING: above monitoring threshold)"
 
     template = _load_email_template()

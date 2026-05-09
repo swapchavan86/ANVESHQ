@@ -415,6 +415,17 @@ def ensure_momentum_schema_columns() -> None:
         "take_profit_pct": "FLOAT NOT NULL DEFAULT 15.0",
         "sector": "VARCHAR(100)",
         "cap_band": "VARCHAR(20)",
+        "position_shares": "INTEGER",
+        "position_value": "FLOAT",
+        "position_size_pct": "FLOAT",
+        "entry_date": "DATE",
+        "entry_price": "FLOAT",
+        "high_water_mark": "FLOAT",
+        "trailing_stop_price": "FLOAT",
+        "exit_date": "DATE",
+        "exit_price": "FLOAT",
+        "exit_reason": "VARCHAR(50)",
+        "realized_return_pct": "FLOAT",
     }
     with get_engine().begin() as connection:
         existing_columns = {

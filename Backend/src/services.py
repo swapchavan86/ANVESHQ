@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 from src.config import get_settings
 from src.models import MomentumStock, Error
 from src.database import get_db_context
+from src.earnings_calendar import EarningsCalendar
+from src.position_sizing import PositionSizer
 from src.utils import Bhavcopy
 from src.yahoo_finance import download_history, get_company_name, get_fast_info, get_info, get_ticker
 import secrets
@@ -30,6 +32,7 @@ logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 CACHE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "fundamentals_cache.json"))
 CACHE_EXPIRY_DAYS = 7
 _MARKET_REGIME_CACHE: dict[datetime.date, bool] = {}
+_NIFTY_RS_CACHE: dict[datetime.date, pd.DataFrame] = {}
 
 
 def _parse_number(value) -> float | None:
@@ -333,6 +336,38 @@ class RiskAndQualityAnalyzer:
         if (avg_vol_5d / avg_vol_30d) < settings_obj.VOLUME_CONFIRMATION_FACTOR:
             return False, f"Weak volume confirmation ({avg_vol_5d:.0f} vs {avg_vol_30d:.0f})"
         return True, None
+
+    @staticmethod
+    def relative_strength_check(
+        df: pd.DataFrame,
+        nifty_df: pd.DataFrame,
+        settings_obj,
+    ) -> tuple[bool, str | None]:
+        if df is None or df.empty or nifty_df is None or nifty_df.empty:
+            return True, None
+        lookback = max(2, int(getattr(settings_obj, "RS_LOOKBACK_DAYS", 20)))
+        if len(df) <= lookback or len(nifty_df) <= lookback:
+            return True, None
+
+        try:
+            stock_close = pd.to_numeric(df["Close"], errors="coerce").dropna()
+            nifty_close = pd.to_numeric(nifty_df["Close"], errors="coerce").dropna()
+            if len(stock_close) <= lookback or len(nifty_close) <= lookback:
+                return True, None
+            stock_return = (float(stock_close.iloc[-1]) / float(stock_close.iloc[-lookback])) - 1
+            nifty_return = (float(nifty_close.iloc[-1]) / float(nifty_close.iloc[-lookback])) - 1
+            outperformance = (stock_return - nifty_return) * 100
+        except Exception as exc:
+            logger.warning("Relative strength check failed. Failing open. error=%s", exc)
+            return True, None
+
+        min_outperformance = float(getattr(settings_obj, "RS_MIN_OUTPERFORMANCE_PCT", 3.0))
+        if outperformance >= min_outperformance:
+            return True, None
+        return (
+            False,
+            f"Weak relative strength: stock {stock_return:.1%} vs Nifty {nifty_return:.1%}",
+        )
     
     @staticmethod
     def calculate_risk_score(df: pd.DataFrame, current_price: float, high_52: float) -> tuple[int, list[str]]:
@@ -395,6 +430,9 @@ class RankingEngine:
         take_profit_pct: float | None = None,
         sector: str | None = None,
         cap_band: str | None = None,
+        position_shares: int | None = None,
+        position_value: float | None = None,
+        position_size_pct: float | None = None,
     ):
         # Critical field guardrail.
         if price is None or low_52_week_price is None or high_52_week_price is None:
@@ -456,6 +494,12 @@ class RankingEngine:
             stock.sector = sector
         if cap_band is not None:
             stock.cap_band = cap_band
+        if position_shares is not None:
+            stock.position_shares = position_shares
+        if position_value is not None:
+            stock.position_value = position_value
+        if position_size_pct is not None:
+            stock.position_size_pct = position_size_pct
         logger.info(
             "RANKING_UPDATE: SET %s last_seen_date=%s rank=%s price=%.2f.",
             symbol,
@@ -587,6 +631,17 @@ class StockFetcher:
                     logger.info(f"DIVERSIFICATION: Skipping {stock.symbol}; small-cap limit reached.")
                     continue
 
+            if stock.position_value:
+                can_add, reason = PositionSizer.can_add_position(
+                    session,
+                    settings_obj.PORTFOLIO_CAPITAL,
+                    stock.position_value,
+                    settings_obj,
+                )
+                if not can_add:
+                    logger.info("POSITION SIZING: Skipping %s: %s", stock.symbol, reason)
+                    continue
+
             top_10_list.append(stock)
             sector_counts[stock.sector or "UNKNOWN"] = sector_counts.get(stock.sector or "UNKNOWN", 0) + 1
             if stock.cap_band == "SMALL_CAP":
@@ -595,6 +650,19 @@ class StockFetcher:
         for stock in top_10_list:
             stock.last_top10_date = today
             stock.top10_hit_count = (stock.top10_hit_count or 0) + 1
+            if stock.entry_date is None or stock.exit_date is not None:
+                stock.entry_date = today
+                stock.entry_price = stock.current_price
+                stock.high_water_mark = stock.current_price
+                stock.trailing_stop_price = (
+                    stock.current_price * (1 - settings_obj.TRAILING_STOP_PCT / 100)
+                    if stock.current_price is not None
+                    else None
+                )
+                stock.exit_date = None
+                stock.exit_price = None
+                stock.exit_reason = None
+                stock.realized_return_pct = None
         
         session.commit()
         
@@ -717,6 +785,7 @@ class StockFetcher:
         settings_obj,
         bhavcopy_df: pd.DataFrame,
         expected_market_date: date | None = None,
+        nifty_df: pd.DataFrame | None = None,
     ) -> set[str]:
         logger.info(f"--- Starting Batch {batch_id} ---")
         qualified_symbols = set()
@@ -823,7 +892,23 @@ class StockFetcher:
                         if not is_confirmed:
                             logger.info(f"SKIP {symbol}: {vol_reason}")
                             continue
-                            
+
+                        if getattr(settings_obj, "RS_FILTER_ENABLED", True):
+                            is_rs_ok, rs_reason = RiskAndQualityAnalyzer.relative_strength_check(
+                                df, nifty_df, settings_obj
+                            )
+                            if not is_rs_ok:
+                                logger.info("SKIP %s: %s", symbol, rs_reason)
+                                continue
+
+                        if getattr(settings_obj, "EARNINGS_EXCLUSION_ENABLED", True):
+                            is_near_earnings, earnings_reason = EarningsCalendar.is_near_earnings(
+                                symbol, engine_svc.today, settings_obj
+                            )
+                            if is_near_earnings:
+                                logger.info("SKIP %s: %s", symbol, earnings_reason)
+                                continue
+	                            
                         fundamentals_info = None
                         if getattr(settings_obj, "FUNDAMENTAL_CHECK_ENABLED", True):
                             fundamentals_info = RiskAndQualityAnalyzer.get_fundamentals_with_fallback(symbol)
@@ -858,6 +943,12 @@ class StockFetcher:
                         sector = None
                         if isinstance(fundamentals_info, dict):
                             sector = fundamentals_info.get("sector") or fundamentals_info.get("industry")
+                        position = PositionSizer.calculate_position(
+                            settings_obj.PORTFOLIO_CAPITAL,
+                            current_close,
+                            stop_loss_price,
+                            settings_obj,
+                        )
 
                         engine_svc.update_ranking(
                             symbol,
@@ -876,6 +967,9 @@ class StockFetcher:
                             take_profit_pct=take_profit_pct,
                             sector=sector,
                             cap_band=_cap_band(market_cap),
+                            position_shares=position["shares"] if position else None,
+                            position_value=position["position_value"] if position else None,
+                            position_size_pct=position["position_pct"] if position else None,
                         )
                         qualified_symbols.add(symbol)
                     except Exception as e:
@@ -905,6 +999,32 @@ class StockFetcher:
                         details={"batch_id": batch_id, "error": str(e)},
                     )
             return qualified_symbols
+
+    @staticmethod
+    def _get_relative_strength_benchmark(settings_obj) -> pd.DataFrame:
+        today = datetime.datetime.now(zoneinfo.ZoneInfo(settings_obj.TIMEZONE)).date()
+        cached = _NIFTY_RS_CACHE.get(today)
+        if cached is not None:
+            return cached
+
+        try:
+            nifty_df = download_history(
+                settings_obj.MARKET_REGIME_INDEX,
+                period="60d",
+                interval="1d",
+                auto_adjust=True,
+                timeout=10,
+            )
+            if isinstance(nifty_df.columns, pd.MultiIndex):
+                nifty_df.columns = nifty_df.columns.get_level_values(0)
+            nifty_df = nifty_df.loc[:, ~nifty_df.columns.duplicated()]
+            nifty_df = StockFetcher._normalize_market_dataframe(nifty_df, settings_obj)
+            _NIFTY_RS_CACHE[today] = nifty_df
+            return nifty_df
+        except Exception as exc:
+            logger.warning("Relative strength benchmark fetch failed: %s. Failing open.", exc)
+            return pd.DataFrame()
+
     @staticmethod
     def scan_stocks_parallel(tickers: list[str], batch_size: int = 100, max_workers: int = 10):
         
@@ -924,7 +1044,13 @@ class StockFetcher:
         expected_market_date = StockFetcher._extract_trade_date_from_bhavcopy(bhavcopy_df, current_settings)
         if expected_market_date is None:
             expected_market_date = MarketValidator.get_expected_market_date(current_settings)
-        
+
+        nifty_df = (
+            StockFetcher._get_relative_strength_benchmark(current_settings)
+            if getattr(current_settings, "RS_FILTER_ENABLED", True)
+            else pd.DataFrame()
+        )
+	        
         if bhavcopy_df.empty:
             logger.warning("Could not get Bhavcopy data. Proceeding with full universe as fallback.")
             filtered_tickers = tickers
@@ -984,6 +1110,7 @@ class StockFetcher:
                     current_settings,
                     bhavcopy_df,
                     expected_market_date,
+                    nifty_df,
                 ): i
                 for i, batch in enumerate(batches)
             }

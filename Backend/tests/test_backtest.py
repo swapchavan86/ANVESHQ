@@ -7,7 +7,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from src.backtest import simulate_with_stop_loss
+from src.backtest import compute_net_return, simulate_with_stop_loss
 
 
 def test_simulate_with_stop_loss_clips_returns_and_marks_exit():
@@ -26,3 +26,16 @@ def test_simulate_with_stop_loss_clips_returns_and_marks_exit():
     assert adjusted.loc[0, "adjusted_exit_10d"] == "TAKE_PROFIT"
     assert adjusted.loc[0, "adjusted_return_20d_pct"] == 4.0
     assert adjusted.loc[0, "adjusted_exit_20d"] == "HORIZON"
+
+
+def test_compute_net_return_applies_costs_and_tax():
+    net_return = compute_net_return(
+        gross_return_pct=10.0,
+        entry_price=100.0,
+        exit_price=110.0,
+        shares=100,
+        holding_days=20,
+    )
+
+    assert net_return is not None
+    assert 7.0 < net_return < 10.0

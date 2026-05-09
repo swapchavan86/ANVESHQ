@@ -67,6 +67,17 @@ class MomentumStock(Base):
     high_52_week_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     sector: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     cap_band: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    position_shares: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    position_value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    position_size_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    entry_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    entry_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    high_water_mark: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    trailing_stop_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    exit_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    exit_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    exit_reason: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    realized_return_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     # Company health/validation controls.
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -135,3 +146,30 @@ class AppMetadata(Base):
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str] = mapped_column(String(500), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class PaperTrade(Base):
+    __tablename__ = "paper_trades"
+    __table_args__ = (
+        Index("ix_paper_trades_symbol_status", "symbol", "status"),
+        Index("ix_paper_trades_signal_date", "signal_date"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    symbol: Mapped[str] = mapped_column(String(20), index=True)
+    signal_date: Mapped[date] = mapped_column(Date, nullable=False)
+    entry_price: Mapped[float] = mapped_column(Float, nullable=False)
+    stop_loss_price: Mapped[float] = mapped_column(Float, nullable=False)
+    take_profit_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    trailing_stop_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    position_shares: Mapped[int] = mapped_column(Integer, nullable=False)
+    position_value: Mapped[float] = mapped_column(Float, nullable=False)
+    rank_score_at_entry: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    risk_score_at_entry: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="OPEN", nullable=False)
+    exit_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    exit_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    gross_return_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    net_return_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    holding_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

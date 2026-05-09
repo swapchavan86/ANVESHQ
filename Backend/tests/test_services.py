@@ -197,7 +197,7 @@ def test_scan_stocks_parallel_decays_ranks_even_without_qualifiers(configured_en
     monkeypatch.setattr("src.services.MarketValidator.get_expected_market_date", lambda settings_obj: today)
     monkeypatch.setattr(
         "src.services.StockFetcher.process_single_batch",
-        lambda batch, batch_id, settings_obj, bhavcopy_df, expected_market_date=None: set(),
+        lambda batch, batch_id, settings_obj, bhavcopy_df, expected_market_date=None, nifty_df=None: set(),
     )
 
     StockFetcher.scan_stocks_parallel(["OLD.NS"], batch_size=1, max_workers=1)

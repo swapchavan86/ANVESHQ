@@ -10,7 +10,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import src.cleanup_service as cleanup_service
 from src.config import get_settings
 from src.database import ensure_momentum_schema_columns, get_database_size, get_engine, run_wal_checkpoint
+from src.exit_manager import ExitManager
 from src.models import Base
+from src.paper_trader import PaperTrader
 from src.services import ErrorLogger, MarketRegimeChecker, MarketValidator, StockFetcher
 from src.utils import TickerLoader
 from src.database import get_db_context
@@ -105,7 +107,23 @@ def main() -> None:
 
     with get_db_context() as session:
         today = datetime.datetime.now(zoneinfo.ZoneInfo(settings.TIMEZONE)).date()
+        exits = ExitManager.update_trailing_stops(session, settings, today)
+        for exit_event in exits:
+            logger.info(
+                "EXIT %s: entry=%.2f exit=%.2f return=%.2f%% reason=%s holding_days=%s",
+                exit_event["symbol"],
+                exit_event["entry_price"] or 0,
+                exit_event["exit_price"] or 0,
+                exit_event["realized_return_pct"] or 0,
+                exit_event["exit_reason"],
+                exit_event["holding_days"],
+            )
+        if settings.PAPER_TRADING_ENABLED:
+            PaperTrader.update_open_trades(session, settings, today)
         top_movers = StockFetcher.get_top_movers_with_repetition_control(session, settings, today)
+        if settings.PAPER_TRADING_ENABLED:
+            for stock in top_movers:
+                PaperTrader.open_trade(session, stock, settings)
         logger.info("Top movers selected after repetition control: %s", len(top_movers))
 
     duplicate_removed = cleanup_service.cleanup_duplicate_symbols(dry_run=False)
