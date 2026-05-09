@@ -721,7 +721,9 @@ def _build_top_pick_card_html(stock: MomentumStock) -> str:
         sector_name = "Unknown Sector"
     category = f"{sector_name} - {_cap_band(market_cap)}".upper()
 
-    target_price, stop_loss = _derive_target_stoploss(current_price, resistance, support, high_52, low_52)
+    observed_target, observed_stop = _derive_target_stoploss(current_price, resistance, support, high_52, low_52)
+    target_price = getattr(stock, "take_profit_price", None) or observed_target
+    stop_loss = getattr(stock, "stop_loss_price", None) or observed_stop
     rr_ratio = _format_rr_ratio(current_price, target_price, stop_loss)
     time_horizon = "3-6 months"
     rr_text = "Data not available"
@@ -756,18 +758,18 @@ def _build_top_pick_card_html(stock: MomentumStock) -> str:
                 <div class="metric-value">{_format_price(current_price)}</div>
               </div>
             </td>
-            <td class="metric-cell">
-              <div class="metric-box target">
-                <div class="metric-label">Observed Target</div>
-                <div class="metric-value">{_format_price(target_price)}</div>
-              </div>
-            </td>
-            <td class="metric-cell">
-              <div class="metric-box stop-loss">
-                <div class="metric-label">Risk Level</div>
-                <div class="metric-value">{_format_price(stop_loss)}</div>
-              </div>
-            </td>
+	            <td class="metric-cell">
+	              <div class="metric-box target">
+	                <div class="metric-label">Take Profit</div>
+	                <div class="metric-value">{_format_price(target_price)}</div>
+	              </div>
+	            </td>
+	            <td class="metric-cell">
+	              <div class="metric-box stop-loss">
+	                <div class="metric-label">Stop Loss</div>
+	                <div class="metric-value">{_format_price(stop_loss)}</div>
+	              </div>
+	            </td>
           </tr>
         </table>
 
@@ -780,8 +782,8 @@ def _build_top_pick_card_html(stock: MomentumStock) -> str:
             </ul>
           </div>
           <div class="info-box">
-            <p><strong>Observation Period:</strong> {time_horizon} | <strong>Potential Risk-Reward:</strong> {rr_text}</p>
-          </div>
+	            <p><strong>Observation Period:</strong> {time_horizon} | <strong>Potential Risk-Reward:</strong> {rr_text} | <strong>Observed Target:</strong> {_format_price(observed_target)}</p>
+	          </div>
         </div>
       </div>
     """

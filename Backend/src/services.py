@@ -21,13 +21,65 @@ import os
 import requests
 from bs4 import BeautifulSoup
 import math
+import re
 
 logger = logging.getLogger("Anveshq")
 logger.setLevel(logging.INFO)
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
-CACHE_FILE = "fundamentals_cache.json"
+CACHE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "fundamentals_cache.json"))
 CACHE_EXPIRY_DAYS = 7
+_MARKET_REGIME_CACHE: dict[datetime.date, bool] = {}
+
+
+def _parse_number(value) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    text = str(value).replace(",", "").replace("₹", "").strip()
+    if not text or text in {"-", "--", "—"}:
+        return None
+    match = re.search(r"-?\d+(?:\.\d+)?", text)
+    if not match:
+        return None
+    try:
+        return float(match.group(0))
+    except ValueError:
+        return None
+
+
+def _parse_market_cap(value) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    text = str(value).replace(",", "").replace("₹", "").strip().upper()
+    number = _parse_number(text)
+    if number is None:
+        return None
+    if "CR" in text:
+        return number * 10_000_000
+    if "LAC" in text or "LAKH" in text:
+        return number * 100_000
+    if "T" in text or "TRILLION" in text:
+        return number * 1_000_000_000_000
+    if "B" in text or "BILLION" in text:
+        return number * 1_000_000_000
+    if "M" in text or "MILLION" in text:
+        return number * 1_000_000
+    return number
+
+
+def _cap_band(market_cap: float | None) -> str | None:
+    if market_cap is None:
+        return None
+    crore = market_cap / 10_000_000
+    if crore >= 50_000:
+        return "LARGE_CAP"
+    if crore >= 5_000:
+        return "MID_CAP"
+    return "SMALL_CAP"
 
 # --- CLASS 1: RISK AND QUALITY ANALYSIS ---
 class RiskAndQualityAnalyzer:
@@ -65,36 +117,181 @@ class RiskAndQualityAnalyzer:
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
 
-            # --- This is the brittle part ---
-            # Find all divs that seem to contain financial data
-            all_divs = soup.find_all('div', class_='gyH2C')
-            
             fundamentals = {}
-            
-            for div in all_divs:
-                if 'Market cap' in div.text:
-                    value_div = div.find_next_sibling('div')
-                    if value_div:
-                        # Value is like '₹8.34T'. Need to parse it.
-                        mc_text = value_div.text.strip().replace('₹', '')
-                        if 'T' in mc_text:
-                            mc_value = float(mc_text.replace('T', '')) * 1e12
-                        elif 'B' in mc_text:
-                            mc_value = float(mc_text.replace('B', '')) * 1e9
-                        else:
-                            mc_value = float(mc_text)
-                        fundamentals['marketCap'] = mc_value
-                
-                if 'P/E ratio' in div.text:
-                    value_div = div.find_next_sibling('div')
-                    if value_div and value_div.text.strip() != '—':
-                        fundamentals['trailingPE'] = float(value_div.text.strip())
+            selectors = ['gyH2C', 'P6K39c', 'YMlKec', 'mfs7Fc']
+            nodes = []
+            for selector in selectors:
+                nodes.extend(soup.find_all(class_=selector))
+
+            label_nodes = soup.find_all(string=re.compile(r"Market cap|P/E ratio", re.I))
+            nodes.extend(node.parent for node in label_nodes if getattr(node, "parent", None) is not None)
+
+            for node in nodes:
+                text = node.get_text(" ", strip=True)
+                sibling = node.find_next_sibling()
+                sibling_text = sibling.get_text(" ", strip=True) if sibling else ""
+                combined = f"{text} {sibling_text}".strip()
+                if "Market cap" in combined:
+                    fundamentals["marketCap"] = fundamentals.get("marketCap") or _parse_market_cap(sibling_text or text)
+                if "P/E ratio" in combined:
+                    fundamentals["trailingPE"] = fundamentals.get("trailingPE") or _parse_number(sibling_text or text)
 
             return fundamentals if fundamentals else None
 
         except Exception as e:
             logger.error(f"Error scraping Google Finance for {symbol}: {e}")
             return None
+
+    @staticmethod
+    def get_fundamentals_from_nse(symbol: str) -> dict | None:
+        if not symbol.endswith(".NS"):
+            return None
+        base_symbol = symbol.replace(".NS", "")
+        session = requests.Session()
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json,text/plain,*/*",
+            "Referer": "https://www.nseindia.com/",
+        }
+        try:
+            session.get("https://www.nseindia.com", headers=headers, timeout=10)
+            response = session.get(
+                f"https://www.nseindia.com/api/quote-equity?symbol={base_symbol}",
+                headers=headers,
+                timeout=10,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            price_info = payload.get("priceInfo") if isinstance(payload.get("priceInfo"), dict) else {}
+            security_info = payload.get("securityInfo") if isinstance(payload.get("securityInfo"), dict) else {}
+            info_block = payload.get("info") if isinstance(payload.get("info"), dict) else {}
+            last_price = _parse_number(price_info.get("lastPrice"))
+            issued_size = _parse_number(security_info.get("issuedSize"))
+            market_cap = _parse_market_cap(payload.get("marketCap") or payload.get("marketCapFull"))
+            if market_cap is None and issued_size is not None and last_price is not None:
+                market_cap = issued_size * last_price
+            result = {
+                "marketCap": market_cap,
+                "trailingPE": _parse_number(price_info.get("pE") or payload.get("pE")),
+                "sector": info_block.get("industry") or payload.get("industry"),
+            }
+            return {key: value for key, value in result.items() if value is not None}
+        except Exception as exc:
+            logger.warning("NSE fundamentals fallback failed for %s: %s", symbol, exc)
+            return None
+
+    @staticmethod
+    def get_fundamentals_from_screener(symbol: str) -> dict | None:
+        base_symbol = symbol.replace(".NS", "").replace(".BO", "")
+        url = f"https://www.screener.in/company/{base_symbol}/consolidated/"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "html.parser")
+            text = soup.get_text(" ", strip=True)
+            result = {}
+            mcap_match = re.search(r"Market Cap\s*₹?\s*([\d,.]+)\s*Cr", text, re.I)
+            pe_match = re.search(r"Stock P/E\s*([\d,.]+)", text, re.I)
+            if mcap_match:
+                result["marketCap"] = _parse_market_cap(f"{mcap_match.group(1)} Cr")
+            if pe_match:
+                result["trailingPE"] = _parse_number(pe_match.group(1))
+            return result or None
+        except Exception as exc:
+            logger.warning("Screener fundamentals fallback failed for %s: %s", symbol, exc)
+            return None
+
+    @staticmethod
+    def _load_fundamentals_cache() -> dict:
+        if os.path.exists(CACHE_FILE):
+            with open(CACHE_FILE, 'r', encoding="utf-8") as f:
+                try:
+                    cache = json.load(f)
+                    return cache if isinstance(cache, dict) else {}
+                except json.JSONDecodeError:
+                    return {}
+        return {}
+
+    @staticmethod
+    def _save_fundamentals_cache(cache: dict) -> None:
+        os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+        with open(CACHE_FILE, 'w', encoding="utf-8") as f:
+            json.dump(cache, f)
+
+    @staticmethod
+    def get_fundamentals_with_fallback(symbol: str) -> dict | None:
+        cache = RiskAndQualityAnalyzer._load_fundamentals_cache()
+        cached_data = cache.get(symbol)
+        if isinstance(cached_data, dict):
+            try:
+                last_fetched = datetime.datetime.fromisoformat(cached_data["timestamp"]).date()
+                if (datetime.date.today() - last_fetched).days < CACHE_EXPIRY_DAYS:
+                    info = cached_data.get("info")
+                    if isinstance(info, dict):
+                        return info
+            except Exception:
+                pass
+
+        ticker = None
+        info: dict | None = None
+        try:
+            ticker = get_ticker(symbol)
+            info = get_info(symbol, ticker=ticker)
+            if not info:
+                raise ValueError("yfinance returned empty info dict")
+        except Exception as exc:
+            logger.info("yfinance info failed for %s: %s", symbol, exc)
+            try:
+                fast_info = get_fast_info(symbol, ticker=ticker)
+                mcap = fast_info.get('marketCap') or fast_info.get("market_cap")
+                info = {'marketCap': mcap, 'trailingPE': None, 'debtToEquity': None} if mcap else None
+            except Exception:
+                info = None
+
+        if not info:
+            for fallback in (
+                RiskAndQualityAnalyzer.get_fundamentals_from_google_finance,
+                RiskAndQualityAnalyzer.get_fundamentals_from_nse,
+                RiskAndQualityAnalyzer.get_fundamentals_from_screener,
+            ):
+                info = fallback(symbol)
+                if info:
+                    break
+
+        if info:
+            cache[symbol] = {
+                'info': info,
+                'timestamp': datetime.datetime.now().isoformat(),
+            }
+            RiskAndQualityAnalyzer._save_fundamentals_cache(cache)
+        return info
+
+    @staticmethod
+    def fundamentals_pass_quality(symbol: str, info: dict | None, settings_obj) -> bool:
+        if not info:
+            logger.warning(f"Could not process fundamentals for {symbol}: 'info' is empty or None after fallback.")
+            return True
+
+        mcap = info.get('marketCap', 0)
+        if mcap is None:
+            mcap = 0
+
+        if mcap < (settings_obj.MIN_MCAP_CRORES * 10_000_000):
+            logger.info(f"REJECT {symbol}: Mcap too low ({mcap})")
+            return False
+
+        pe = info.get('trailingPE')
+        if pe is not None and isinstance(pe, (int, float)) and pe < 0:
+             logger.info(f"REJECT {symbol}: Loss Making (Negative PE)")
+             return False
+
+        dte = info.get('debtToEquity')
+        if dte is not None and isinstance(dte, (int, float)) and dte > 3:
+            logger.info(f"REJECT {symbol}: High Debt (D/E > 3)")
+            return False
+
+        return True
 
     @staticmethod
     def relative_liquidity_check(df: pd.DataFrame, settings_obj) -> tuple[bool, str | None]:
@@ -170,85 +367,8 @@ class RiskAndQualityAnalyzer:
 
     @staticmethod
     def deep_fundamental_check(symbol: str, settings_obj) -> bool:
-        
-        # --- Caching Logic ---
-        if os.path.exists(CACHE_FILE):
-            with open(CACHE_FILE, 'r') as f:
-                try:
-                    cache = json.load(f)
-                except json.JSONDecodeError:
-                    cache = {}
-        else:
-            cache = {}
-
-        if symbol in cache:
-            cached_data = cache[symbol]
-            last_fetched = datetime.datetime.fromisoformat(cached_data['timestamp']).date()
-            if (datetime.date.today() - last_fetched).days < CACHE_EXPIRY_DAYS:
-                info = cached_data['info']
-            else:
-                info = None
-        else:
-            info = None
-
-        if info is None:
-            ticker = None
-            try:
-                ticker = get_ticker(symbol)
-                info = get_info(symbol, ticker=ticker)
-                if not info: # yfinance can return an empty dict
-                    raise ValueError("yfinance returned empty info dict")
-            except Exception as e:
-                # Try fast_info as a partial fallback for Market Cap (more robust than info)
-                try:
-                    fast_info = get_fast_info(symbol, ticker=ticker)
-                    mcap = fast_info.get('marketCap')
-                    if mcap:
-                        info = {'marketCap': mcap, 'trailingPE': None, 'debtToEquity': None}
-                        logger.info(f"Recovered Market Cap for {symbol} using fast_info.")
-                    else:
-                        raise e
-                except Exception:
-                    logger.info(f"yfinance failed for {symbol}: {e}. Falling back to web scraping.")
-                    try:
-                        info = RiskAndQualityAnalyzer.get_fundamentals_from_google_finance(symbol)
-                    except Exception as scrape_e:
-                        logger.error(f"Web scraping failed for {symbol}: {scrape_e}")
-                        # Fail open if both primary and fallback fail
-                        return True 
-            
-            # Cache whatever result we got
-            cache[symbol] = {
-                'info': info,
-                'timestamp': datetime.datetime.now().isoformat()
-            }
-            with open(CACHE_FILE, 'w') as f:
-                json.dump(cache, f)
-
-        if not info:
-            logger.warning(f"Could not process fundamentals for {symbol}: 'info' is empty or None after fallback.")
-            return True
-
-        # --- Filtering Logic ---
-        mcap = info.get('marketCap', 0)
-        if mcap is None: # marketCap can be None
-            mcap = 0
-            
-        if mcap < (settings_obj.MIN_MCAP_CRORES * 10_000_000):
-            logger.info(f"REJECT {symbol}: Mcap too low ({mcap})")
-            return False
-
-        pe = info.get('trailingPE')
-        if pe is not None and isinstance(pe, (int, float)) and pe < 0:
-             logger.info(f"REJECT {symbol}: Loss Making (Negative PE)")
-             return False
-        
-        dte = info.get('debtToEquity')
-        if dte is not None and isinstance(dte, (int, float)) and dte > 3:
-            logger.info(f"REJECT {symbol}: High Debt (D/E > 3)")
-            return False
-
-        return True
+        info = RiskAndQualityAnalyzer.get_fundamentals_with_fallback(symbol)
+        return RiskAndQualityAnalyzer.fundamentals_pass_quality(symbol, info, settings_obj)
 
 # --- CLASS 2: DB MANAGEMENT ---
 class RankingEngine:
@@ -269,6 +389,12 @@ class RankingEngine:
         is_volume_confirmed: bool,
         is_fundamental_ok: bool,
         company_name: str | None = None,
+        stop_loss_price: float | None = None,
+        take_profit_price: float | None = None,
+        stop_loss_pct: float | None = None,
+        take_profit_pct: float | None = None,
+        sector: str | None = None,
+        cap_band: str | None = None,
     ):
         # Critical field guardrail.
         if price is None or low_52_week_price is None or high_52_week_price is None:
@@ -309,6 +435,12 @@ class RankingEngine:
             logger.info(f"RANKING_UPDATE: NO CHANGE {symbol}. Rank: {stock.rank_score}, Last seen: {stock.last_seen_date}, Today: {self.today}.")
         
         stock.current_price = price
+        stock.stop_loss_price = stop_loss_price
+        stock.take_profit_price = take_profit_price
+        if stop_loss_pct is not None:
+            stock.stop_loss_pct = stop_loss_pct
+        if take_profit_pct is not None:
+            stock.take_profit_pct = take_profit_pct
         stock.low_52_week = low_52_week_price
         stock.low_52_week_date = low_52_week_date
         stock.high_52_week_price = high_52_week_price
@@ -320,6 +452,10 @@ class RankingEngine:
         stock.is_active = True
         if company_name is not None:
             stock.company_name = company_name
+        if sector is not None:
+            stock.sector = sector
+        if cap_band is not None:
+            stock.cap_band = cap_band
         logger.info(
             "RANKING_UPDATE: SET %s last_seen_date=%s rank=%s price=%.2f.",
             symbol,
@@ -356,6 +492,50 @@ class RankingEngine:
             with get_db_context() as error_session:
                 ErrorLogger.log_error(error_session, "Rank Decay Error", details={"error": str(e)})
 
+
+class MarketRegimeChecker:
+    @staticmethod
+    def is_bull_market(settings_obj) -> bool:
+        today = datetime.datetime.now(zoneinfo.ZoneInfo(settings_obj.TIMEZONE)).date()
+        if today in _MARKET_REGIME_CACHE:
+            return _MARKET_REGIME_CACHE[today]
+
+        index_symbol = getattr(settings_obj, "MARKET_REGIME_INDEX", "^NSEI")
+        try:
+            df = download_history(index_symbol, period="1y", interval="1d", auto_adjust=True, timeout=10)
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+            df = df.loc[:, ~df.columns.duplicated()]
+            df = StockFetcher._normalize_market_dataframe(df, settings_obj)
+            if df.empty or "Close" not in df.columns or len(df) < 200:
+                logger.warning("MARKET REGIME: insufficient %s data; failing open.", index_symbol)
+                _MARKET_REGIME_CACHE[today] = True
+                return True
+
+            close_series = pd.to_numeric(df["Close"], errors="coerce").dropna()
+            if len(close_series) < 200:
+                logger.warning("MARKET REGIME: insufficient clean %s close data; failing open.", index_symbol)
+                _MARKET_REGIME_CACHE[today] = True
+                return True
+
+            latest_close = float(close_series.iloc[-1])
+            sma_200 = float(close_series.tail(200).mean())
+            is_bull = latest_close > sma_200
+            logger.info(
+                "MARKET REGIME: %s close=%.2f sma200=%.2f bull=%s",
+                index_symbol,
+                latest_close,
+                sma_200,
+                is_bull,
+            )
+            _MARKET_REGIME_CACHE[today] = is_bull
+            return is_bull
+        except Exception as exc:
+            logger.warning("MARKET REGIME: check failed for %s: %s. Failing open.", index_symbol, exc)
+            _MARKET_REGIME_CACHE[today] = True
+            return True
+
+
 # --- CLASS 3: PARALLEL FETCHER ---
 class StockFetcher:
     @staticmethod
@@ -377,6 +557,8 @@ class StockFetcher:
         all_candidates = session.execute(stmt).scalars().all()
 
         top_10_list = []
+        sector_counts: dict[str, int] = {}
+        small_cap_count = 0
         
         for stock in all_candidates:
             if len(top_10_list) >= 10:
@@ -395,7 +577,20 @@ class StockFetcher:
                 logger.info(f"GENUINE STRENGTH FILTER: Skipping {stock.symbol} due to not meeting criteria.")
                 continue
 
+            if getattr(settings_obj, "DIVERSIFICATION_ENABLED", True):
+                sector = stock.sector or "UNKNOWN"
+                max_per_sector = max(1, int(getattr(settings_obj, "MAX_STOCKS_PER_SECTOR", 2)))
+                if sector_counts.get(sector, 0) >= max_per_sector:
+                    logger.info(f"DIVERSIFICATION: Skipping {stock.symbol}; sector limit reached for {sector}.")
+                    continue
+                if stock.cap_band == "SMALL_CAP" and small_cap_count >= getattr(settings_obj, "MAX_SMALL_CAP_TOP_PICKS", 3):
+                    logger.info(f"DIVERSIFICATION: Skipping {stock.symbol}; small-cap limit reached.")
+                    continue
+
             top_10_list.append(stock)
+            sector_counts[stock.sector or "UNKNOWN"] = sector_counts.get(stock.sector or "UNKNOWN", 0) + 1
+            if stock.cap_band == "SMALL_CAP":
+                small_cap_count += 1
 
         for stock in top_10_list:
             stock.last_top10_date = today
@@ -629,7 +824,14 @@ class StockFetcher:
                             logger.info(f"SKIP {symbol}: {vol_reason}")
                             continue
                             
-                        is_fundamental_ok = RiskAndQualityAnalyzer.deep_fundamental_check(symbol, settings_obj)
+                        fundamentals_info = None
+                        if getattr(settings_obj, "FUNDAMENTAL_CHECK_ENABLED", True):
+                            fundamentals_info = RiskAndQualityAnalyzer.get_fundamentals_with_fallback(symbol)
+                            is_fundamental_ok = RiskAndQualityAnalyzer.fundamentals_pass_quality(
+                                symbol, fundamentals_info, settings_obj
+                            )
+                        else:
+                            is_fundamental_ok = True
                         if not is_fundamental_ok:
                             continue
 
@@ -648,6 +850,15 @@ class StockFetcher:
                         low_date_idx = df['Low'].idxmin()
                         low_date = low_date_idx.date() if isinstance(low_date_idx, pd.Timestamp) else low_date_idx
 
+                        stop_loss_pct = -abs(float(getattr(settings_obj, "STOP_LOSS_PCT", -8.0)))
+                        take_profit_pct = abs(float(getattr(settings_obj, "TAKE_PROFIT_PCT", 15.0)))
+                        stop_loss_price = current_close * (1 - abs(stop_loss_pct) / 100)
+                        take_profit_price = current_close * (1 + take_profit_pct / 100)
+                        market_cap = fundamentals_info.get("marketCap") if isinstance(fundamentals_info, dict) else None
+                        sector = None
+                        if isinstance(fundamentals_info, dict):
+                            sector = fundamentals_info.get("sector") or fundamentals_info.get("industry")
+
                         engine_svc.update_ranking(
                             symbol,
                             current_close,
@@ -659,6 +870,12 @@ class StockFetcher:
                             is_confirmed,
                             is_fundamental_ok,
                             company_name=company_name,
+                            stop_loss_price=stop_loss_price,
+                            take_profit_price=take_profit_price,
+                            stop_loss_pct=stop_loss_pct,
+                            take_profit_pct=take_profit_pct,
+                            sector=sector,
+                            cap_band=_cap_band(market_cap),
                         )
                         qualified_symbols.add(symbol)
                     except Exception as e:
@@ -696,6 +913,14 @@ class StockFetcher:
 
         bhavcopy_df = Bhavcopy.get_bhavcopy_data()
         current_settings = get_settings()
+        if getattr(current_settings, "MARKET_REGIME_FILTER_ENABLED", True):
+            if not MarketRegimeChecker.is_bull_market(current_settings):
+                logger.warning(
+                    "MARKET REGIME: %s is below its 200-day average. Skipping momentum scan.",
+                    current_settings.MARKET_REGIME_INDEX,
+                )
+                return
+
         expected_market_date = StockFetcher._extract_trade_date_from_bhavcopy(bhavcopy_df, current_settings)
         if expected_market_date is None:
             expected_market_date = MarketValidator.get_expected_market_date(current_settings)

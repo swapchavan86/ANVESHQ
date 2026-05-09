@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     MIN_PRICE: float = 20.0
     MIN_MCAP_CRORES: float = 1000.0
     STREAK_THRESHOLD_DAYS: int = 3
+    STOP_LOSS_PCT: float = -8.0
+    TAKE_PROFIT_PCT: float = 15.0
 
     # Filtering and ranking settings.
     NEAR_52_WEEK_HIGH_THRESHOLD: float = 0.90
@@ -73,6 +75,11 @@ class Settings(BaseSettings):
     BREAKOUT_LOOKBACK_DAYS: int = 20
     MAX_RANK: int = 100
     DECAY_FACTOR: float = 0.2
+    MARKET_REGIME_FILTER_ENABLED: bool = True
+    MARKET_REGIME_INDEX: str = "^NSEI"
+    DIVERSIFICATION_ENABLED: bool = True
+    MAX_STOCKS_PER_SECTOR: int = 2
+    MAX_SMALL_CAP_TOP_PICKS: int = 3
 
     # Retention and cleanup settings.
     DATA_RETENTION_WEEKS: int = 104
@@ -128,6 +135,32 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return value.strip().strip('"').strip("'")
         return value
+
+    @field_validator("MARKET_REGIME_INDEX", mode="before")
+    @classmethod
+    def normalize_market_regime_index(cls, value):
+        if value is None:
+            return "^NSEI"
+        if isinstance(value, str):
+            normalized = value.strip().strip('"').strip("'")
+            return normalized or "^NSEI"
+        return value
+
+    @field_validator("STOP_LOSS_PCT", mode="before")
+    @classmethod
+    def normalize_stop_loss_pct(cls, value):
+        if value is None:
+            return -8.0
+        numeric = float(value)
+        return -abs(numeric)
+
+    @field_validator("TAKE_PROFIT_PCT", mode="before")
+    @classmethod
+    def normalize_take_profit_pct(cls, value):
+        if value is None:
+            return 15.0
+        numeric = float(value)
+        return abs(numeric)
 
     @property
     def database_file_path(self) -> str:

@@ -11,9 +11,9 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from src.config import get_settings
-from src.database import get_db_context, get_engine, reset_db_components
+from src.database import ensure_momentum_schema_columns, get_db_context, get_engine, reset_db_components
 from src.models import Base, MomentumStock
-from src.services import MarketValidator, RankingEngine, RiskAndQualityAnalyzer, StockFetcher
+from src.services import MarketRegimeChecker, MarketValidator, RankingEngine, RiskAndQualityAnalyzer, StockFetcher
 from src.utils import Bhavcopy
 from src.yahoo_finance import download_history, get_info, is_recoverable_yahoo_error
 
@@ -31,6 +31,7 @@ def configured_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("MASTER_DATA_DIRECTORY", str(master_dir))
     monkeypatch.setenv("JSON_UNIVERSE_PATH", str(master_dir / "master-latest.json"))
     monkeypatch.setenv("MIN_HISTORY_DAYS", "150")
+    monkeypatch.setenv("MARKET_REGIME_FILTER_ENABLED", "false")
 
     get_settings.cache_clear()
     reset_db_components()
@@ -243,3 +244,131 @@ def test_update_ranking_sets_last_seen_date_to_today(configured_environment):
             select(MomentumStock).where(MomentumStock.symbol == "ABC.NS")
         ).scalar_one().last_seen_date
     assert last_seen_date == expected_today
+
+
+def test_update_ranking_stores_stop_target_and_diversification_fields(configured_environment):
+    settings = get_settings()
+    with get_db_context() as session:
+        engine = RankingEngine(session, settings)
+        engine.update_ranking(
+            symbol="RISK.NS",
+            price=100.0,
+            low_52_week_price=70.0,
+            low_52_week_date=dt.date(2025, 6, 1),
+            high_52_week_price=120.0,
+            high_52_week_date=dt.date(2026, 3, 28),
+            risk_score=1,
+            is_volume_confirmed=True,
+            is_fundamental_ok=True,
+            stop_loss_price=92.0,
+            take_profit_price=115.0,
+            stop_loss_pct=-8.0,
+            take_profit_pct=15.0,
+            sector="Capital Goods",
+            cap_band="MID_CAP",
+        )
+
+    with get_db_context() as session:
+        stock = session.execute(select(MomentumStock).where(MomentumStock.symbol == "RISK.NS")).scalar_one()
+        values = {
+            "stop_loss_price": stock.stop_loss_price,
+            "take_profit_price": stock.take_profit_price,
+            "stop_loss_pct": stock.stop_loss_pct,
+            "take_profit_pct": stock.take_profit_pct,
+            "sector": stock.sector,
+            "cap_band": stock.cap_band,
+        }
+
+    assert values["stop_loss_price"] == 92.0
+    assert values["take_profit_price"] == 115.0
+    assert values["stop_loss_pct"] == -8.0
+    assert values["take_profit_pct"] == 15.0
+    assert values["sector"] == "Capital Goods"
+    assert values["cap_band"] == "MID_CAP"
+
+
+def test_schema_migration_is_idempotent(configured_environment):
+    ensure_momentum_schema_columns()
+    ensure_momentum_schema_columns()
+
+    with get_engine().connect() as connection:
+        columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(momentum_ranks)").fetchall()}
+
+    assert "stop_loss_price" in columns
+    assert "take_profit_price" in columns
+    assert "sector" in columns
+    assert "cap_band" in columns
+
+
+def test_top_movers_applies_sector_and_small_cap_diversification(configured_environment, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("DIVERSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("MAX_STOCKS_PER_SECTOR", "2")
+    monkeypatch.setenv("MAX_SMALL_CAP_TOP_PICKS", "3")
+    get_settings.cache_clear()
+    settings = get_settings()
+    today = dt.date.today()
+
+    with get_db_context() as session:
+        for idx in range(5):
+            session.add(
+                MomentumStock(
+                    symbol=f"DEF{idx}.NS",
+                    last_seen_date=today,
+                    rank_score=10 - idx,
+                    daily_rank_delta=2,
+                    risk_score=1,
+                    is_volume_confirmed=True,
+                    is_fundamental_ok=True,
+                    current_price=100.0,
+                    sector="Defence",
+                    cap_band="SMALL_CAP",
+                )
+            )
+        session.add(
+            MomentumStock(
+                symbol="BANK.NS",
+                last_seen_date=today,
+                rank_score=4,
+                daily_rank_delta=1,
+                risk_score=1,
+                is_volume_confirmed=True,
+                is_fundamental_ok=True,
+                current_price=100.0,
+                sector="Banking",
+                cap_band="LARGE_CAP",
+            )
+        )
+
+    with get_db_context() as session:
+        selected = StockFetcher.get_top_movers_with_repetition_control(session, settings, today)
+        selected_symbols = [stock.symbol for stock in selected]
+    assert len([symbol for symbol in selected_symbols if symbol.startswith("DEF")]) == 2
+    assert "BANK.NS" in selected_symbols
+
+
+def test_market_regime_checker_returns_false_when_index_below_sma(configured_environment, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("MARKET_REGIME_FILTER_ENABLED", "true")
+    get_settings.cache_clear()
+    settings = get_settings()
+    dates = pd.date_range("2025-01-01", periods=220, freq="D")
+    closes = [100.0] * 219 + [80.0]
+    df = pd.DataFrame({"Close": closes}, index=dates)
+
+    monkeypatch.setattr("src.services._MARKET_REGIME_CACHE", {})
+    monkeypatch.setattr("src.services.download_history", lambda *args, **kwargs: df)
+
+    assert not MarketRegimeChecker.is_bull_market(settings)
+
+
+def test_market_regime_checker_flattens_multiindex_history(configured_environment, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("MARKET_REGIME_FILTER_ENABLED", "true")
+    get_settings.cache_clear()
+    settings = get_settings()
+    dates = pd.date_range("2025-01-01", periods=220, freq="D")
+    columns = pd.MultiIndex.from_tuples([("Close", "^NSEI"), ("Volume", "^NSEI")])
+    df = pd.DataFrame([[100.0, 1_000]] * 219 + [[120.0, 1_000]], index=dates, columns=columns)
+
+    monkeypatch.setattr("src.services._MARKET_REGIME_CACHE", {})
+    monkeypatch.setattr("src.services.download_history", lambda *args, **kwargs: df)
+
+    assert MarketRegimeChecker.is_bull_market(settings)

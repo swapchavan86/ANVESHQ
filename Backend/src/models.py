@@ -57,10 +57,16 @@ class MomentumStock(Base):
     is_fundamental_ok: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
 
     current_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    stop_loss_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    take_profit_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    stop_loss_pct: Mapped[float] = mapped_column(Float, default=-8.0, nullable=False)
+    take_profit_pct: Mapped[float] = mapped_column(Float, default=15.0, nullable=False)
     low_52_week: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     low_52_week_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     high_52_week_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     high_52_week_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    sector: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    cap_band: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     # Company health/validation controls.
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

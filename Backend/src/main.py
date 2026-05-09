@@ -9,9 +9,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 import src.cleanup_service as cleanup_service
 from src.config import get_settings
-from src.database import get_database_size, get_engine, run_wal_checkpoint
+from src.database import ensure_momentum_schema_columns, get_database_size, get_engine, run_wal_checkpoint
 from src.models import Base
-from src.services import ErrorLogger, MarketValidator, StockFetcher
+from src.services import ErrorLogger, MarketRegimeChecker, MarketValidator, StockFetcher
 from src.utils import TickerLoader
 from src.database import get_db_context
 
@@ -37,6 +37,7 @@ def populate_known_errors() -> None:
 
 def bootstrap_db() -> None:
     Base.metadata.create_all(bind=get_engine())
+    ensure_momentum_schema_columns()
     populate_known_errors()
 
 
@@ -78,6 +79,13 @@ def main() -> None:
 
     if not MarketValidator.should_run(settings):
         sys.exit(0)
+
+    if settings.MARKET_REGIME_FILTER_ENABLED:
+        logger.info(
+            "--- Market regime %s bull=%s ---",
+            settings.MARKET_REGIME_INDEX,
+            MarketRegimeChecker.is_bull_market(settings),
+        )
 
     bootstrap_db()
     _log_database_size("Before scan")

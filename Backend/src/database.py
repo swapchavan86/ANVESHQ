@@ -406,6 +406,27 @@ def analyze_database() -> None:
         connection.exec_driver_sql("ANALYZE")
 
 
+def ensure_momentum_schema_columns() -> None:
+    """Add newly introduced nullable/defaulted momentum columns to existing SQLite DBs."""
+    required_columns = {
+        "stop_loss_price": "FLOAT",
+        "take_profit_price": "FLOAT",
+        "stop_loss_pct": "FLOAT NOT NULL DEFAULT -8.0",
+        "take_profit_pct": "FLOAT NOT NULL DEFAULT 15.0",
+        "sector": "VARCHAR(100)",
+        "cap_band": "VARCHAR(20)",
+    }
+    with get_engine().begin() as connection:
+        existing_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(momentum_ranks)").fetchall()
+        }
+        for column_name, column_type in required_columns.items():
+            if column_name not in existing_columns:
+                connection.exec_driver_sql(f"ALTER TABLE momentum_ranks ADD COLUMN {column_name} {column_type}")
+                logger.info("Added missing momentum_ranks column: %s", column_name)
+
+
 def get_database_size(db_file_path: str | None = None) -> float:
     """Return database size in MB."""
     settings = get_settings()
