@@ -9,10 +9,13 @@ import pandas as pd
 from sqlalchemy.orm import Session
 from src.database import get_database_size, get_db_context
 from src.models import MomentumStock
+from src.paper_trader import PaperTrader
 from src.position_sizing import PositionSizer
+from src.quality_screener import QualityScreener
 from src.config import get_settings
 from src.yahoo_finance import download_history, get_fast_info, get_info, get_ticker
-from src.services import RiskAndQualityAnalyzer
+from src.services import MarketRegimeChecker, RiskAndQualityAnalyzer
+from src.utils import TickerLoader
 from sqlalchemy import select, desc, asc
 import datetime
 import os
@@ -728,18 +731,21 @@ def _build_top_pick_card_html(stock: MomentumStock) -> str:
         sector_name = "Unknown Sector"
     category = f"{sector_name} - {_cap_band(market_cap)}".upper()
 
-    observed_target, observed_stop = _derive_target_stoploss(current_price, resistance, support, high_52, low_52)
-    target_price = getattr(stock, "take_profit_price", None) or observed_target
-    stop_loss = getattr(stock, "stop_loss_price", None) or observed_stop
+    target_price, observed_stop = _derive_target_stoploss(current_price, resistance, support, high_52, low_52)
+    saved_target_price = _parse_number(getattr(stock, "take_profit_price", None))
+    saved_stop_loss = _parse_number(getattr(stock, "stop_loss_price", None))
+    target_price = saved_target_price or target_price
+    stop_loss = saved_stop_loss or observed_stop
     rr_ratio = _format_rr_ratio(current_price, target_price, stop_loss)
     time_horizon = "3-6 months"
     rr_text = "Data not available"
     if rr_ratio != "--":
         rr_text = f"Approximately {rr_ratio} based on historical patterns"
 
-    position_shares = getattr(stock, "position_shares", None)
-    position_value = getattr(stock, "position_value", None)
-    position_size_pct = getattr(stock, "position_size_pct", None)
+    position_shares_value = _parse_number(getattr(stock, "position_shares", None))
+    position_shares = int(position_shares_value) if position_shares_value is not None else None
+    position_value = _parse_number(getattr(stock, "position_value", None))
+    position_size_pct = _parse_number(getattr(stock, "position_size_pct", None))
     position_section = ""
     if position_shares and position_value and position_size_pct is not None:
         position_section = f"""
@@ -776,34 +782,34 @@ def _build_top_pick_card_html(stock: MomentumStock) -> str:
                 <div class="metric-value">{_format_price(current_price)}</div>
               </div>
             </td>
-	            <td class="metric-cell">
-	              <div class="metric-box target">
-	                <div class="metric-label">Take Profit</div>
-	                <div class="metric-value">{_format_price(target_price)}</div>
-	              </div>
-	            </td>
-	            <td class="metric-cell">
-	              <div class="metric-box stop-loss">
-	                <div class="metric-label">Stop Loss</div>
-	                <div class="metric-value">{_format_price(stop_loss)}</div>
-	              </div>
-	            </td>
+            <td class="metric-cell">
+              <div class="metric-box target">
+                <div class="metric-label">Take Profit</div>
+                <div class="metric-value">{_format_price(target_price)}</div>
+              </div>
+            </td>
+            <td class="metric-cell">
+              <div class="metric-box stop-loss">
+                <div class="metric-label">Stop Loss</div>
+                <div class="metric-value">{_format_price(stop_loss)}</div>
+              </div>
+            </td>
           </tr>
         </table>
 
-	        <div class="analyst-section">
-	          <div class="analyst-label">Research Observations</div>
-	          <div class="analyst-content">
-	            <p>Based on our analysis of publicly available data, we've identified several factors worth monitoring:</p>
-	            <ul>
-	              {"".join(f"<li>{item}</li>" for item in observation_points[:6])}
-	            </ul>
-	          </div>
-	          {position_section}
-	          <div class="info-box">
-	            <p><strong>Observation Period:</strong> {time_horizon} | <strong>Potential Risk-Reward:</strong> {rr_text} | <strong>Observed Target:</strong> {_format_price(observed_target)}</p>
-	          </div>
-	        </div>
+        <div class="analyst-section">
+          <div class="analyst-label">Research Observations</div>
+          <div class="analyst-content">
+            <p>Based on our analysis of publicly available data, we've identified several factors worth monitoring:</p>
+            <ul>
+              {"".join(f"<li>{item}</li>" for item in observation_points[:6])}
+            </ul>
+          </div>
+          {position_section}
+          <div class="info-box">
+            <p><strong>Observation Period:</strong> {time_horizon} | <strong>Potential Risk-Reward:</strong> {rr_text} | <strong>Observed Target:</strong> {_format_price(target_price)}</p>
+          </div>
+        </div>
       </div>
     """
 
@@ -1100,12 +1106,167 @@ def calculate_roi(symbol: str) -> float | None:
             friday_close = friday_close.squeeze()
         roi = ((float(friday_close) - float(monday_open)) / float(monday_open)) * 100
         return roi
-    except Exception:
+    except Exception as exc:
+        logger.warning("ROI calculation failed for %s: %s", symbol, exc)
         return None
 
 # --- 2. EMAIL CONTENT BUILDER ---
 
-def generate_email_html(top_picks: list[MomentumStock], missed_opportunities: list[MomentumStock], roi_map: dict[str, float | None]) -> str:
+
+def _build_paper_performance_section(session) -> str:
+    try:
+        summary = PaperTrader.get_performance_summary(session)
+    except Exception as exc:
+        logger.warning("Paper trading performance summary failed: %s", exc)
+        return ""
+    if not summary:
+        return ""
+
+    open_positions = summary.get("open_positions", 0)
+    closed_this_week = summary.get("closed_this_week", summary.get("closed_positions", 0))
+    win_rate = summary.get("win_rate_pct")
+    avg_return = summary.get("avg_return_pct", summary.get("average_net_return_pct"))
+    cumulative_pnl = summary.get("cumulative_pnl", summary.get("cumulative_net_return_pct", 0.0))
+    if not open_positions and not closed_this_week and win_rate is None and avg_return is None and not cumulative_pnl:
+        return ""
+    pnl_color = "#059669" if (cumulative_pnl or 0) >= 0 else "#dc2626"
+    win_rate_text = f"{win_rate:.1f}%" if isinstance(win_rate, (int, float)) else "--"
+    avg_return_text = f"{avg_return:.2f}%" if isinstance(avg_return, (int, float)) else "--"
+    cumulative_text = f"{cumulative_pnl:.2f}%" if isinstance(cumulative_pnl, (int, float)) else "--"
+    return f"""
+        <div class="stock-card" style="border-left:4px solid #7c3aed;">
+          <h3 style="margin-top:0;">Paper Trading Performance</h3>
+          <p><strong>Open Positions:</strong> {open_positions} | <strong>Closed This Week:</strong> {closed_this_week}</p>
+          <p><strong>Win Rate:</strong> {win_rate_text} | <strong>Average Return:</strong> {avg_return_text} | <strong>Cumulative P&L:</strong> <span style="color:{pnl_color};font-weight:700;">{cumulative_text}</span></p>
+        </div>
+    """
+
+
+def get_weeks_closed_trades(session, today) -> list:
+    this_monday = today - datetime.timedelta(days=today.weekday())
+    rows = session.execute(
+        select(MomentumStock)
+        .where(MomentumStock.exit_date >= this_monday, MomentumStock.exit_date <= today)
+        .order_by(desc(MomentumStock.realized_return_pct))
+        .limit(5)
+    ).scalars().all()
+    trades = []
+    for stock in rows:
+        trades.append(
+            {
+                "symbol": stock.symbol,
+                "entry_price": stock.entry_price,
+                "exit_price": stock.exit_price,
+                "realized_return_pct": stock.realized_return_pct,
+                "holding_days": (stock.exit_date - stock.entry_date).days if stock.exit_date and stock.entry_date else None,
+                "exit_reason": stock.exit_reason,
+            }
+        )
+    return trades
+
+
+def _build_closed_trades_section(closed_trades: list | None) -> str:
+    if not closed_trades:
+        return ""
+    rows = []
+    for trade in closed_trades:
+        return_pct = trade.get("realized_return_pct")
+        color = "#059669" if isinstance(return_pct, (int, float)) and return_pct >= 0 else "#dc2626"
+        return_text = f"{return_pct:.2f}%" if isinstance(return_pct, (int, float)) else "--"
+        rows.append(
+            f"""
+            <tr>
+              <td>{trade.get("symbol") or "--"}</td>
+              <td>{_format_price(trade.get("entry_price"))}</td>
+              <td>{_format_price(trade.get("exit_price"))}</td>
+              <td style="color:{color};font-weight:700;">{return_text}</td>
+              <td>{trade.get("holding_days") or "--"}</td>
+              <td>{trade.get("exit_reason") or "--"}</td>
+            </tr>
+            """
+        )
+    return f"""
+        <div class="section">
+          <h2 class="section-header">This Week's Closed Positions</h2>
+          <table role="presentation" class="metrics-table" width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <th>Symbol</th>
+              <th>Entry</th>
+              <th>Exit</th>
+              <th>Return</th>
+              <th>Days</th>
+              <th>Reason</th>
+            </tr>
+            {"".join(rows)}
+          </table>
+        </div>
+    """
+
+
+def _build_quality_picks_section(quality_picks: list | None) -> str:
+    if not quality_picks:
+        return ""
+    rows = []
+    for pick in quality_picks[:10]:
+        rows.append(
+            f"""
+            <tr>
+              <td>{pick.get("symbol") or "--"}</td>
+              <td>{_format_price(pick.get("current_price"))}</td>
+              <td>{_format_numeric(pick.get("pe_ratio"))}</td>
+              <td>{_format_percent(pick.get("roe_pct"))}</td>
+              <td>{_format_percent(pick.get("price_vs_52w_high_pct"))}</td>
+            </tr>
+            """
+        )
+    return f"""
+        <div class="section">
+          <h2 class="section-header">
+            Quality Picks
+            <span class="educational-badge">Bear Market Watchlist</span>
+          </h2>
+          <table role="presentation" class="metrics-table" width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <th>Symbol</th>
+              <th>CMP</th>
+              <th>PE</th>
+              <th>ROE</th>
+              <th>Vs 52W High</th>
+            </tr>
+            {"".join(rows)}
+          </table>
+        </div>
+    """
+
+
+def _build_regime_banner(is_bull: bool) -> str:
+    if is_bull:
+        text = "Market Regime: BULL - Nifty above 200D SMA. Momentum signals active."
+        bg = "#ecfdf5"
+        border = "#059669"
+        color = "#065f46"
+    else:
+        text = "Market Regime: BEAR/SIDEWAYS - Nifty below 200D SMA. Reduced signals. Quality picks below."
+        bg = "#fef2f2"
+        border = "#dc2626"
+        color = "#7f1d1d"
+    return f"""
+        <div class="section" style="background:{bg};border-left:4px solid {border};padding:14px 16px;color:{color};">
+          <strong>{text}</strong>
+        </div>
+    """
+
+
+def generate_email_html(
+    top_picks: list[MomentumStock],
+    missed_opportunities: list[MomentumStock],
+    roi_map: dict[str, float | None],
+    *,
+    session=None,
+    is_bull: bool = True,
+    quality_picks: list | None = None,
+    closed_trades: list | None = None,
+) -> str:
     """
     Builds the HTML content for the weekly email report (no graphs).
     Uses company name when available, current price in Rs., and Google search links.
@@ -1114,18 +1275,24 @@ def generate_email_html(top_picks: list[MomentumStock], missed_opportunities: li
     top_cards = "\n".join(_build_top_pick_card_html(stock) for stock in top_picks)
     settings_obj = get_settings()
     try:
-        with get_db_context() as session:
-            portfolio_heat = PositionSizer.get_portfolio_heat(session, settings_obj.PORTFOLIO_CAPITAL)
-    except Exception:
+        with get_db_context() as heat_session:
+            portfolio_heat = PositionSizer.get_portfolio_heat(heat_session, settings_obj.PORTFOLIO_CAPITAL)
+    except Exception as exc:
+        logger.warning("Portfolio heat lookup failed: %s", exc)
         portfolio_heat = None
     heat_html = (
         f'<p class="disclaimer"><strong>Portfolio Heat:</strong> {portfolio_heat:.1f}% deployed capital.</p>'
         if portfolio_heat is not None
         else ""
     )
-    watchlist_section = ""
+    paper_section = _build_paper_performance_section(session) if session is not None else ""
+    regime_banner = _build_regime_banner(is_bull)
+    quality_section = _build_quality_picks_section(quality_picks)
+    closed_trades_section = _build_closed_trades_section(closed_trades)
+
+    watchlist_section = regime_banner + paper_section
     if top_cards:
-        watchlist_section = f"""
+        watchlist_section += f"""
         <div class="section">
           <h2 class="section-header">
             Stocks on Our Research Watchlist
@@ -1135,6 +1302,7 @@ def generate_email_html(top_picks: list[MomentumStock], missed_opportunities: li
           {top_cards}
         </div>
         """
+    watchlist_section += quality_section
 
     technical_cards = ""
     if missed_opportunities:
@@ -1169,7 +1337,9 @@ def generate_email_html(top_picks: list[MomentumStock], missed_opportunities: li
         .replace("{{WATCHLIST_SECTION}}", watchlist_section)
         .replace(
             "{{TECHNICAL_SECTION}}",
-            technical_section + f'<p class="disclaimer"><strong>System:</strong> {db_size_note}</p>',
+            technical_section
+            + closed_trades_section
+            + f'<p class="disclaimer"><strong>System:</strong> {db_size_note}</p>',
         )
         .replace("{{LOGO_BLOCK}}", _get_logo_block())
     )
@@ -1207,9 +1377,21 @@ def send_email(html_content: str) -> bool:
     smtp_port = settings.SMTP_PORT or 0
     use_ssl = getattr(settings, "SMTP_USE_SSL", False)
 
-    if not all([sender_email, receiver_email, smtp_host, smtp_port, password]):
+    missing_email_settings = [
+        name
+        for name, value in {
+            "SMTP_HOST": smtp_host,
+            "SMTP_PORT": smtp_port,
+            "SMTP_USER": sender_email,
+            "SMTP_PASSWORD": password,
+            "TO_EMAIL": receiver_email,
+        }.items()
+        if not value
+    ]
+    if missing_email_settings:
         logger.warning(
-            "Email configuration incomplete (need SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, TO_EMAIL). Skipping send."
+            "Email configuration incomplete; missing or blank: %s. Skipping send.",
+            ", ".join(missing_email_settings),
         )
         return False
 
@@ -1259,7 +1441,7 @@ def send_email(html_content: str) -> bool:
         logger.info("Email sent successfully to %s", receiver_email)
         return True
     except Exception as e:
-        logger.exception("Failed to send email: %s", e)
+        logger.warning("Failed to send email: %s", e)
         return False
 
 # --- 4. MAIN ORCHESTRATOR ---
@@ -1276,6 +1458,17 @@ def run_report() -> None:
         exclude = {s.symbol for s in top_picks}
         candidates = get_missed_opportunities(session, exclude_symbols=exclude, limit=100)
         settings = get_settings()
+        is_bull = MarketRegimeChecker.is_bull_market(settings) if settings.MARKET_REGIME_FILTER_ENABLED else True
+        quality_picks = []
+        if not is_bull and settings.QUALITY_SCREEN_ENABLED:
+            try:
+                tickers = TickerLoader.get_unique_tickers()
+                quality_picks = QualityScreener.screen_quality_stocks(tickers[:200], settings)
+            except Exception as exc:
+                logger.warning("Quality picks generation failed: %s", exc)
+                quality_picks = []
+        today = datetime.date.today()
+        closed_trades = get_weeks_closed_trades(session, today)
         missed_opportunities: list[MomentumStock] = []
         roi_map: dict[str, float | None] = {}
         max_missed = 4
@@ -1332,7 +1525,15 @@ def run_report() -> None:
                 roi_map[stock.symbol] = calculate_roi(stock.symbol)
                 if len(missed_opportunities) >= min(2, max_missed):
                     break
-        html_content = generate_email_html(top_picks, missed_opportunities, roi_map)
+        html_content = generate_email_html(
+            top_picks,
+            missed_opportunities,
+            roi_map,
+            session=session,
+            is_bull=is_bull,
+            quality_picks=quality_picks,
+            closed_trades=closed_trades,
+        )
         send_email(html_content)
     logger.info("Report generation complete.")
 

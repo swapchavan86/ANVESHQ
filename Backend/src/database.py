@@ -310,6 +310,44 @@ def _recover_dev_database_from_auth_failure(settings, db_path: str, exc: Runtime
     return True
 
 
+def ensure_momentum_schema_columns() -> None:
+    """Add new columns to momentum_ranks if they do not exist.
+
+    Uses raw ALTER TABLE because SQLAlchemy create_all() does not add columns to
+    existing tables. Each statement is independent; a column that already exists
+    raises OperationalError which is caught and silently ignored. Safe to call on
+    every startup (idempotent).
+    """
+    new_columns: list[tuple[str, str]] = [
+        ("stop_loss_price", "REAL"),
+        ("take_profit_price", "REAL"),
+        ("stop_loss_pct", "REAL DEFAULT -8.0"),
+        ("take_profit_pct", "REAL DEFAULT 15.0"),
+        ("sector", "VARCHAR(100)"),
+        ("cap_band", "VARCHAR(20)"),
+        ("position_shares", "INTEGER"),
+        ("position_value", "REAL"),
+        ("position_size_pct", "REAL"),
+        ("entry_date", "DATE"),
+        ("entry_price", "REAL"),
+        ("high_water_mark", "REAL"),
+        ("trailing_stop_price", "REAL"),
+        ("exit_date", "DATE"),
+        ("exit_price", "REAL"),
+        ("exit_reason", "VARCHAR(50)"),
+        ("realized_return_pct", "REAL"),
+    ]
+    engine = get_engine()
+    with engine.connect() as conn:
+        for col_name, col_type in new_columns:
+            try:
+                conn.exec_driver_sql(f"ALTER TABLE momentum_ranks ADD COLUMN {col_name} {col_type}")
+                logger.info("Schema migration: added column %s to momentum_ranks", col_name)
+            except Exception:
+                pass
+    logger.info("ensure_momentum_schema_columns: schema check complete")
+
+
 def _initialize_db_components() -> None:
     global _engine, _SessionLocal
     if _engine is not None and _SessionLocal is not None:
@@ -332,6 +370,10 @@ def _initialize_db_components() -> None:
         _configure_engine(_engine)
         _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
         _validate_database_access()
+    try:
+        ensure_momentum_schema_columns()
+    except Exception as migration_exc:
+        logger.warning("Schema migration warning (non-fatal): %s", migration_exc)
 
 
 def reset_db_components() -> None:
@@ -404,38 +446,6 @@ def analyze_database() -> None:
     """Run ANALYZE to refresh SQLite query planner statistics."""
     with get_engine().connect() as connection:
         connection.exec_driver_sql("ANALYZE")
-
-
-def ensure_momentum_schema_columns() -> None:
-    """Add newly introduced nullable/defaulted momentum columns to existing SQLite DBs."""
-    required_columns = {
-        "stop_loss_price": "FLOAT",
-        "take_profit_price": "FLOAT",
-        "stop_loss_pct": "FLOAT NOT NULL DEFAULT -8.0",
-        "take_profit_pct": "FLOAT NOT NULL DEFAULT 15.0",
-        "sector": "VARCHAR(100)",
-        "cap_band": "VARCHAR(20)",
-        "position_shares": "INTEGER",
-        "position_value": "FLOAT",
-        "position_size_pct": "FLOAT",
-        "entry_date": "DATE",
-        "entry_price": "FLOAT",
-        "high_water_mark": "FLOAT",
-        "trailing_stop_price": "FLOAT",
-        "exit_date": "DATE",
-        "exit_price": "FLOAT",
-        "exit_reason": "VARCHAR(50)",
-        "realized_return_pct": "FLOAT",
-    }
-    with get_engine().begin() as connection:
-        existing_columns = {
-            row[1]
-            for row in connection.exec_driver_sql("PRAGMA table_info(momentum_ranks)").fetchall()
-        }
-        for column_name, column_type in required_columns.items():
-            if column_name not in existing_columns:
-                connection.exec_driver_sql(f"ALTER TABLE momentum_ranks ADD COLUMN {column_name} {column_type}")
-                logger.info("Added missing momentum_ranks column: %s", column_name)
 
 
 def get_database_size(db_file_path: str | None = None) -> float:

@@ -28,6 +28,36 @@ jobs:
         working-directory: Backend
         run: python -m pip install -r requirements.txt
 
+      - name: Run schema migration
+        env:
+          MODE: ${{ secrets.MODE || 'PROD' }}
+          DATABASE_PATH: data/anveshq.db
+          TEST_DATABASE_PATH: data/test_anveshq.db
+          NSE_EQUITY_LIST_URL: ${{ secrets.NSE_EQUITY_LIST_URL }}
+          NSE_NIFTY500_CSV_URL: ${{ secrets.NSE_NIFTY500_CSV_URL }}
+          BSE_CM_CSV_URL: ${{ secrets.BSE_CM_CSV_URL }}
+          BHAVCOPY_URL_TEMPLATE: ${{ secrets.BHAVCOPY_URL_TEMPLATE }}
+          FUNDAMENTAL_CHECK_ENABLED: ${{ secrets.FUNDAMENTAL_CHECK_ENABLED }}
+          MIN_PRICE: ${{ secrets.MIN_PRICE }}
+          MIN_MCAP_CRORES: ${{ secrets.MIN_MCAP_CRORES }}
+          STREAK_THRESHOLD_DAYS: ${{ secrets.STREAK_THRESHOLD_DAYS }}
+          NEAR_52_WEEK_HIGH_THRESHOLD: ${{ secrets.NEAR_52_WEEK_HIGH_THRESHOLD }}
+          VOLUME_CONFIRMATION_FACTOR: ${{ secrets.VOLUME_CONFIRMATION_FACTOR }}
+          RELATIVE_LIQUIDITY_FACTOR: ${{ secrets.RELATIVE_LIQUIDITY_FACTOR }}
+          REPETITION_COOLDOWN_DAYS: ${{ secrets.REPETITION_COOLDOWN_DAYS }}
+          BREAKOUT_LOOKBACK_DAYS: ${{ secrets.BREAKOUT_LOOKBACK_DAYS }}
+          MAX_RANK: ${{ secrets.MAX_RANK }}
+          DECAY_FACTOR: ${{ secrets.DECAY_FACTOR }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST || 'smtp.gmail.com' }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT || '587' }}
+          SMTP_USE_SSL: ${{ secrets.SMTP_USE_SSL || 'false' }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          TO_EMAIL: ${{ secrets.TO_EMAIL }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        working-directory: Backend
+        run: python -c "from src.database import ensure_momentum_schema_columns; ensure_momentum_schema_columns()"
+
       - name: Run email report engine
         env:
           MODE: ${{ secrets.MODE || 'PROD' }}

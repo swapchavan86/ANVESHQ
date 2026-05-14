@@ -5,8 +5,12 @@ from urllib.parse import quote
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Build absolute project root from Backend/src/config.py.
-_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+# Build absolute paths from Backend/src/config.py.
+_SRC_ROOT = os.path.abspath(os.path.dirname(__file__))
+_BACKEND_ROOT = os.path.abspath(os.path.join(_SRC_ROOT, ".."))
+_PROJECT_ROOT = os.path.abspath(os.path.join(_BACKEND_ROOT, ".."))
+_LEGACY_SRC_ENV_FILE = os.path.join(_SRC_ROOT, ".env")
+_BACKEND_ENV_FILE = os.path.join(_BACKEND_ROOT, ".env")
 
 
 def _resolve_project_path(path_value: str) -> str:
@@ -83,6 +87,7 @@ class Settings(BaseSettings):
     MAX_CONCURRENT_POSITIONS: int = 6
     RISK_PER_TRADE_PCT: float = 1.5
     PAPER_TRADING_ENABLED: bool = True
+    DAILY_ALERT_ENABLED: bool = True
 
     # Filtering and ranking settings.
     NEAR_52_WEEK_HIGH_THRESHOLD: float = 0.90
@@ -134,7 +139,7 @@ class Settings(BaseSettings):
     TO_EMAIL: str | None = None
 
     model_config = SettingsConfigDict(
-        env_file=os.path.join(os.path.dirname(__file__), "..", ".env"),
+        env_file=(_LEGACY_SRC_ENV_FILE, _BACKEND_ENV_FILE),
         env_file_encoding="utf-8",
         extra="ignore",
     )

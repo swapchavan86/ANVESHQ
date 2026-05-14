@@ -9,10 +9,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 import src.cleanup_service as cleanup_service
 from src.config import get_settings
-from src.database import ensure_momentum_schema_columns, get_database_size, get_engine, run_wal_checkpoint
+from src.database import get_database_size, get_engine, run_wal_checkpoint
 from src.exit_manager import ExitManager
 from src.models import Base
 from src.paper_trader import PaperTrader
+from src.position_sizing import PositionSizer
 from src.services import ErrorLogger, MarketRegimeChecker, MarketValidator, StockFetcher
 from src.utils import TickerLoader
 from src.database import get_db_context
@@ -39,6 +40,8 @@ def populate_known_errors() -> None:
 
 def bootstrap_db() -> None:
     Base.metadata.create_all(bind=get_engine())
+    from src.database import ensure_momentum_schema_columns
+
     ensure_momentum_schema_columns()
     populate_known_errors()
 
@@ -121,10 +124,30 @@ def main() -> None:
         if settings.PAPER_TRADING_ENABLED:
             PaperTrader.update_open_trades(session, settings, today)
         top_movers = StockFetcher.get_top_movers_with_repetition_control(session, settings, today)
+        logger.info("Top movers selected after repetition control: %s", len(top_movers))
+        for stock in top_movers:
+            if stock.entry_date is None:
+                stop_loss_price = stock.stop_loss_price or (
+                    stock.current_price * (1 + settings.HARD_STOP_LOSS_PCT / 100)
+                    if stock.current_price
+                    else None
+                )
+                if stock.current_price and stop_loss_price:
+                    position = PositionSizer.calculate_position(
+                        settings.PORTFOLIO_CAPITAL,
+                        stock.current_price,
+                        stop_loss_price,
+                        settings,
+                    )
+                    if position:
+                        stock.position_shares = position.get("shares")
+                        stock.position_value = position.get("position_value")
+                        stock.position_size_pct = position.get("position_pct")
+                        stock.entry_date = today
+                        stock.entry_price = stock.current_price
         if settings.PAPER_TRADING_ENABLED:
             for stock in top_movers:
                 PaperTrader.open_trade(session, stock, settings)
-        logger.info("Top movers selected after repetition control: %s", len(top_movers))
 
     duplicate_removed = cleanup_service.cleanup_duplicate_symbols(dry_run=False)
     if duplicate_removed:

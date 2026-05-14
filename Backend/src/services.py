@@ -31,8 +31,20 @@ logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
 CACHE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "fundamentals_cache.json"))
 CACHE_EXPIRY_DAYS = 7
-_MARKET_REGIME_CACHE: dict[datetime.date, bool] = {}
+_regime_cache: dict[datetime.date, bool] = {}
+_MARKET_REGIME_CACHE = _regime_cache
 _NIFTY_RS_CACHE: dict[datetime.date, pd.DataFrame] = {}
+
+
+def _get_regime_cache() -> dict:
+    preferred = globals().get("_regime_cache", {})
+    legacy = globals().get("_MARKET_REGIME_CACHE", preferred)
+    if preferred is not legacy:
+        if not preferred:
+            return preferred
+        if not legacy:
+            return legacy
+    return preferred
 
 
 def _parse_number(value) -> float | None:
@@ -343,16 +355,18 @@ class RiskAndQualityAnalyzer:
         nifty_df: pd.DataFrame,
         settings_obj,
     ) -> tuple[bool, str | None]:
+        if not settings_obj.RS_FILTER_ENABLED:
+            return True, None
+        lookback = settings_obj.RS_LOOKBACK_DAYS
         if df is None or df.empty or nifty_df is None or nifty_df.empty:
             return True, None
-        lookback = max(2, int(getattr(settings_obj, "RS_LOOKBACK_DAYS", 20)))
-        if len(df) <= lookback or len(nifty_df) <= lookback:
+        if len(df) < lookback or len(nifty_df) < lookback:
             return True, None
 
         try:
             stock_close = pd.to_numeric(df["Close"], errors="coerce").dropna()
             nifty_close = pd.to_numeric(nifty_df["Close"], errors="coerce").dropna()
-            if len(stock_close) <= lookback or len(nifty_close) <= lookback:
+            if len(stock_close) < lookback or len(nifty_close) < lookback:
                 return True, None
             stock_return = (float(stock_close.iloc[-1]) / float(stock_close.iloc[-lookback])) - 1
             nifty_return = (float(nifty_close.iloc[-1]) / float(nifty_close.iloc[-lookback])) - 1
@@ -366,7 +380,8 @@ class RiskAndQualityAnalyzer:
             return True, None
         return (
             False,
-            f"Weak relative strength: stock {stock_return:.1%} vs Nifty {nifty_return:.1%}",
+            f"Weak relative strength; RS fail: stock {stock_return:.1%} vs Nifty {nifty_return:.1%} "
+            f"(gap={outperformance:.1f}%)",
         )
     
     @staticmethod
@@ -541,8 +556,11 @@ class MarketRegimeChecker:
     @staticmethod
     def is_bull_market(settings_obj) -> bool:
         today = datetime.datetime.now(zoneinfo.ZoneInfo(settings_obj.TIMEZONE)).date()
-        if today in _MARKET_REGIME_CACHE:
-            return _MARKET_REGIME_CACHE[today]
+        if not settings_obj.MARKET_REGIME_FILTER_ENABLED:
+            return True
+        regime_cache = _get_regime_cache()
+        if today in regime_cache:
+            return regime_cache[today]
 
         index_symbol = getattr(settings_obj, "MARKET_REGIME_INDEX", "^NSEI")
         try:
@@ -553,13 +571,13 @@ class MarketRegimeChecker:
             df = StockFetcher._normalize_market_dataframe(df, settings_obj)
             if df.empty or "Close" not in df.columns or len(df) < 200:
                 logger.warning("MARKET REGIME: insufficient %s data; failing open.", index_symbol)
-                _MARKET_REGIME_CACHE[today] = True
+                regime_cache[today] = True
                 return True
 
             close_series = pd.to_numeric(df["Close"], errors="coerce").dropna()
             if len(close_series) < 200:
                 logger.warning("MARKET REGIME: insufficient clean %s close data; failing open.", index_symbol)
-                _MARKET_REGIME_CACHE[today] = True
+                regime_cache[today] = True
                 return True
 
             latest_close = float(close_series.iloc[-1])
@@ -572,11 +590,11 @@ class MarketRegimeChecker:
                 sma_200,
                 is_bull,
             )
-            _MARKET_REGIME_CACHE[today] = is_bull
+            regime_cache[today] = is_bull
             return is_bull
         except Exception as exc:
             logger.warning("MARKET REGIME: check failed for %s: %s. Failing open.", index_symbol, exc)
-            _MARKET_REGIME_CACHE[today] = True
+            regime_cache[today] = True
             return True
 
 
@@ -786,6 +804,7 @@ class StockFetcher:
         bhavcopy_df: pd.DataFrame,
         expected_market_date: date | None = None,
         nifty_df: pd.DataFrame | None = None,
+        is_bull: bool = True,
     ) -> set[str]:
         logger.info(f"--- Starting Batch {batch_id} ---")
         qualified_symbols = set()
@@ -921,6 +940,16 @@ class StockFetcher:
                             continue
 
                         risk_score, risk_reasons = RiskAndQualityAnalyzer.calculate_risk_score(df, current_close, high_52)
+                        max_risk_score = 3 if is_bull else 2
+                        if risk_score > max_risk_score:
+                            logger.info(
+                                "SKIP %s: Risk score %s exceeds %s threshold %s.",
+                                symbol,
+                                risk_score,
+                                "bull" if is_bull else "bear/sideways",
+                                max_risk_score,
+                            )
+                            continue
                         logger.info(f"QUALIFIED: {symbol} | Price: {current_close:.2f} | Risk: {risk_score} ({', '.join(risk_reasons)})")
                         
                         company_name = None
@@ -1033,13 +1062,13 @@ class StockFetcher:
 
         bhavcopy_df = Bhavcopy.get_bhavcopy_data()
         current_settings = get_settings()
-        if getattr(current_settings, "MARKET_REGIME_FILTER_ENABLED", True):
-            if not MarketRegimeChecker.is_bull_market(current_settings):
-                logger.warning(
-                    "MARKET REGIME: %s is below its 200-day average. Skipping momentum scan.",
-                    current_settings.MARKET_REGIME_INDEX,
-                )
-                return
+        is_bull = MarketRegimeChecker.is_bull_market(current_settings)
+        logger.info(
+            "MARKET REGIME: %s bull=%s. Risk threshold=%s.",
+            current_settings.MARKET_REGIME_INDEX,
+            is_bull,
+            3 if is_bull else 2,
+        )
 
         expected_market_date = StockFetcher._extract_trade_date_from_bhavcopy(bhavcopy_df, current_settings)
         if expected_market_date is None:
@@ -1111,6 +1140,7 @@ class StockFetcher:
                     bhavcopy_df,
                     expected_market_date,
                     nifty_df,
+                    is_bull,
                 ): i
                 for i, batch in enumerate(batches)
             }

@@ -13,6 +13,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from src.config import get_settings
 from src.database import get_db_context, get_engine, reset_db_components
 from src.earnings_calendar import EarningsCalendar
+from src.backtest import compute_net_return
 from src.exit_manager import ExitManager
 from src.models import Base, MomentumStock
 from src.paper_trader import PaperTrader
@@ -107,6 +108,55 @@ def test_relative_strength_requires_outperformance(configured_environment):
 
     assert not is_ok
     assert "Weak relative strength" in reason
+
+
+def test_relative_strength_check_pass(configured_environment, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("RS_MIN_OUTPERFORMANCE_PCT", "3.0")
+    get_settings.cache_clear()
+    settings = get_settings()
+    stock_df = pd.DataFrame({"Close": [100.0] * 20 + [108.0]})
+    nifty_df = pd.DataFrame({"Close": [100.0] * 20 + [103.0]})
+
+    assert RiskAndQualityAnalyzer.relative_strength_check(stock_df, nifty_df, settings) == (True, None)
+
+
+def test_relative_strength_check_fail(configured_environment, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("RS_MIN_OUTPERFORMANCE_PCT", "3.0")
+    get_settings.cache_clear()
+    settings = get_settings()
+    stock_df = pd.DataFrame({"Close": [100.0] * 20 + [102.0]})
+    nifty_df = pd.DataFrame({"Close": [100.0] * 20 + [104.0]})
+
+    is_ok, reason = RiskAndQualityAnalyzer.relative_strength_check(stock_df, nifty_df, settings)
+
+    assert is_ok is False
+    assert isinstance(reason, str)
+
+
+def test_relative_strength_check_disabled(configured_environment, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("RS_FILTER_ENABLED", "false")
+    get_settings.cache_clear()
+    settings = get_settings()
+    stock_df = pd.DataFrame({"Close": [100.0] * 20 + [90.0]})
+    nifty_df = pd.DataFrame({"Close": [100.0] * 20 + [120.0]})
+
+    assert RiskAndQualityAnalyzer.relative_strength_check(stock_df, nifty_df, settings) == (True, None)
+
+
+def test_relative_strength_check_insufficient_data(configured_environment):
+    settings = get_settings()
+    stock_df = pd.DataFrame({"Close": [100.0, 101.0]})
+    nifty_df = pd.DataFrame({"Close": [100.0, 101.0]})
+
+    assert RiskAndQualityAnalyzer.relative_strength_check(stock_df, nifty_df, settings) == (True, None)
+
+
+def test_compute_net_return_reduces_gross(configured_environment):
+    net_return = compute_net_return(10.0, 100.0, 110.0, 10, 15, get_settings())
+
+    assert net_return is not None
+    assert net_return < 10.0
+    assert net_return > 7.0
 
 
 def test_paper_trader_opens_and_updates_trade(configured_environment):
