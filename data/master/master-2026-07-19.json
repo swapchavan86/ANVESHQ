@@ -1,5 +1,5 @@
 {
-  "snapshot_date": "2026-07-12",
+  "snapshot_date": "2026-07-19",
   "source": "NSE/BSE",
   "records": [
     {
@@ -502,6 +502,13 @@
     {
       "isin": "INE976R01033",
       "symbol": "AGIIL",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE1YPB01014",
+      "symbol": "AGL",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -1391,6 +1398,13 @@
     {
       "isin": "INE898S01029",
       "symbol": "AURUM",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE142K01011",
+      "symbol": "AURUS",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -2404,6 +2418,13 @@
       "tier": "TIER_1"
     },
     {
+      "isin": "INE707C01018",
+      "symbol": "CAPTRUST",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
       "isin": "INE120A01034",
       "symbol": "CARBORUNIV",
       "exchange": "NSE",
@@ -2978,6 +2999,13 @@
       "tier": "TIER_1"
     },
     {
+      "isin": "INE0ZK601013",
+      "symbol": "CSM",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
       "isin": "INE627H01017",
       "symbol": "CTE",
       "exchange": "NSE",
@@ -3113,6 +3141,13 @@
     {
       "isin": "INE503A01015",
       "symbol": "DCBBANK",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE0A1101019",
+      "symbol": "DCI",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -3512,6 +3547,13 @@
     {
       "isin": "INE341R01014",
       "symbol": "DTIL",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE741L01018",
+      "symbol": "DUCON",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -4959,6 +5001,13 @@
       "tier": "TIER_1"
     },
     {
+      "isin": "INE844O01030",
+      "symbol": "GUJENERGY",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
       "isin": "INE610B01024",
       "symbol": "GUJRAFFIA",
       "exchange": "NSE",
@@ -5248,13 +5297,6 @@
     {
       "isin": "INE782E01017",
       "symbol": "HESTERBIO",
-      "exchange": "NSE",
-      "exchange_suffix": "NS",
-      "tier": "TIER_1"
-    },
-    {
-      "isin": "INE0JUI01012",
-      "symbol": "HEXAGON",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -6317,13 +6359,6 @@
       "tier": "TIER_1"
     },
     {
-      "isin": "INE572A01036",
-      "symbol": "JBCHEPHARM",
-      "exchange": "NSE",
-      "exchange_suffix": "NS",
-      "tier": "TIER_1"
-    },
-    {
       "isin": "INE927D01051",
       "symbol": "JBMA",
       "exchange": "NSE",
@@ -7227,6 +7262,13 @@
       "tier": "TIER_1"
     },
     {
+      "isin": "INE0ISX01025",
+      "symbol": "KUSUMGAR",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
       "isin": "INE2KCE01013",
       "symbol": "KWIL",
       "exchange": "NSE",
@@ -7299,6 +7341,13 @@
     {
       "isin": "INE670X01014",
       "symbol": "LASA",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE17IR01028",
+      "symbol": "LASERPOWER",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -7418,6 +7467,13 @@
     {
       "isin": "INE0J1Y01017",
       "symbol": "LICI",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE060901027",
+      "symbol": "LIKHITHA",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -7586,13 +7642,6 @@
     {
       "isin": "INE576O01020",
       "symbol": "LXCHEM",
-      "exchange": "NSE",
-      "exchange_suffix": "NS",
-      "tier": "TIER_1"
-    },
-    {
-      "isin": "INE142K01011",
-      "symbol": "LYPSAGEMS",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -9306,13 +9355,6 @@
       "tier": "TIER_1"
     },
     {
-      "isin": "INE895W01019",
-      "symbol": "PANACHE",
-      "exchange": "NSE",
-      "exchange_suffix": "NS",
-      "tier": "TIER_1"
-    },
-    {
       "isin": "INE305C01029",
       "symbol": "PANAMAPET",
       "exchange": "NSE",
@@ -9483,6 +9525,13 @@
     {
       "isin": "INE182A01018",
       "symbol": "PFIZER",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE367G01038",
+      "symbol": "PFOCUS",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -9775,13 +9824,6 @@
       "tier": "TIER_1"
     },
     {
-      "isin": "INE095I01015",
-      "symbol": "PPAP",
-      "exchange": "NSE",
-      "exchange_suffix": "NS",
-      "tier": "TIER_1"
-    },
-    {
       "isin": "INE0DK501011",
       "symbol": "PPLPHARMA",
       "exchange": "NSE",
@@ -10069,6 +10111,13 @@
       "tier": "TIER_1"
     },
     {
+      "isin": "INE084Q01012",
+      "symbol": "RACE",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
       "isin": "INE704B01017",
       "symbol": "RACLGEAR",
       "exchange": "NSE",
@@ -10183,6 +10232,13 @@
     {
       "isin": "INE809A01032",
       "symbol": "RAMAPHO",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE1SJO01012",
+      "symbol": "RAMBHAJO",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -10463,6 +10519,13 @@
     {
       "isin": "INE046A01015",
       "symbol": "RIIL",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE302D01024",
+      "symbol": "RIR",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -10778,6 +10841,13 @@
     {
       "isin": "INE13B501022",
       "symbol": "SAATVIKGL",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
+      "isin": "INE860T01019",
+      "symbol": "SABEVENTS",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -11350,6 +11420,13 @@
       "tier": "TIER_1"
     },
     {
+      "isin": "INE274V01019",
+      "symbol": "SHANKARA",
+      "exchange": "NSE",
+      "exchange_suffix": "NS",
+      "tier": "TIER_1"
+    },
+    {
       "isin": "INE933X01016",
       "symbol": "SHANTI",
       "exchange": "NSE",
@@ -11380,13 +11457,6 @@
     {
       "isin": "INE597I01028",
       "symbol": "SHARDAMOTR",
-      "exchange": "NSE",
-      "exchange_suffix": "NS",
-      "tier": "TIER_1"
-    },
-    {
-      "isin": "INE037B01020",
-      "symbol": "SHARDUL",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -11576,13 +11646,6 @@
     {
       "isin": "INE0A0S01028",
       "symbol": "SIGMA",
-      "exchange": "NSE",
-      "exchange_suffix": "NS",
-      "tier": "TIER_1"
-    },
-    {
-      "isin": "INE933B01012",
-      "symbol": "SIGMAADV",
       "exchange": "NSE",
       "exchange_suffix": "NS",
       "tier": "TIER_1"
@@ -14346,13 +14409,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE2FMX01012",
-      "symbol": "544808",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE421A01028",
       "symbol": "523204",
       "exchange": "BSE",
@@ -14388,20 +14444,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE916Y01027",
-      "symbol": "544200",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE1YPB01014",
-      "symbol": "544602",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE449G01018",
       "symbol": "537292",
       "exchange": "BSE",
@@ -14432,13 +14474,6 @@
     {
       "isin": "INE773I01017",
       "symbol": "533029",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE08E401029",
-      "symbol": "542770",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -14752,13 +14787,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE0ZK601013",
-      "symbol": "544806",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE278G01037",
       "symbol": "532640",
       "exchange": "BSE",
@@ -14789,13 +14817,6 @@
     {
       "isin": "INE0OPA01027",
       "symbol": "544276",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE0I3401014",
-      "symbol": "543593",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -15067,20 +15088,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE871H01011",
-      "symbol": "532951",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE844O01030",
-      "symbol": "539336",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE586G01017",
       "symbol": "532543",
       "exchange": "BSE",
@@ -15111,6 +15118,13 @@
     {
       "isin": "INF179KC1HX2",
       "symbol": "539517",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE0JUI01012",
+      "symbol": "544785",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -15655,6 +15669,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE301O01023",
+      "symbol": "544467",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE0PK601023",
       "symbol": "544278",
       "exchange": "BSE",
@@ -15760,13 +15781,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE07S101038",
-      "symbol": "543915",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE844A01013",
       "symbol": "523260",
       "exchange": "BSE",
@@ -15781,13 +15795,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE367G01038",
-      "symbol": "532748",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE600A01035",
       "symbol": "500327",
       "exchange": "BSE",
@@ -15797,6 +15804,13 @@
     {
       "isin": "INE0INJ01017",
       "symbol": "544003",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE095I01015",
+      "symbol": "532934",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -15886,13 +15900,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE1SJO01012",
-      "symbol": "544803",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE330H01018",
       "symbol": "532712",
       "exchange": "BSE",
@@ -15951,13 +15958,6 @@
     {
       "isin": "INE027T01023",
       "symbol": "539226",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE860T01019",
-      "symbol": "540081",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -16089,6 +16089,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE037B01020",
+      "symbol": "512393",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE669Y01022",
       "symbol": "540786",
       "exchange": "BSE",
@@ -16152,6 +16159,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE933B01012",
+      "symbol": "532408",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE178C01020",
       "symbol": "532419",
       "exchange": "BSE",
@@ -16175,13 +16189,6 @@
     {
       "isin": "INE728Z01015",
       "symbol": "543470",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE285B01017",
-      "symbol": "500285",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -16259,13 +16266,6 @@
     {
       "isin": "INE356B01024",
       "symbol": "526506",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE142I01023",
-      "symbol": "532890",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -20163,20 +20163,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE039A09NL3",
-      "symbol": "972657",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE039A09NM1",
-      "symbol": "972655",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE0BUS07AS7",
       "symbol": "939260",
       "exchange": "BSE",
@@ -20291,13 +20277,6 @@
     {
       "isin": "INE05F407BM3",
       "symbol": "939084",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE046W07263",
-      "symbol": "975004",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -20618,13 +20597,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE411L07031",
-      "symbol": "972687",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE121A08OI5",
       "symbol": "958788",
       "exchange": "BSE",
@@ -20641,13 +20613,6 @@
     {
       "isin": "INE03K307041",
       "symbol": "975977",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE0BNQ07139",
-      "symbol": "976962",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -22235,13 +22200,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE01I507372",
-      "symbol": "937613",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE01I507489",
       "symbol": "937765",
       "exchange": "BSE",
@@ -22328,6 +22286,13 @@
     {
       "isin": "INE0NES07188",
       "symbol": "976776",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE2XU715019",
+      "symbol": "977971",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -22748,13 +22713,6 @@
     {
       "isin": "INE0BUS07AT5",
       "symbol": "939264",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE01I507380",
-      "symbol": "937615",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -23238,13 +23196,6 @@
     {
       "isin": "INE939X07150",
       "symbol": "975966",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE939X07143",
-      "symbol": "975874",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -24090,6 +24041,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE996U07560",
+      "symbol": "977965",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE0N5S07052",
       "symbol": "977145",
       "exchange": "BSE",
@@ -24211,13 +24169,6 @@
     {
       "isin": "INE0IX207239",
       "symbol": "976922",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE511C08969",
-      "symbol": "954508",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -24902,6 +24853,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE2XU715027",
+      "symbol": "977972",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE551U07266",
       "symbol": "975398",
       "exchange": "BSE",
@@ -25065,13 +25023,6 @@
     {
       "isin": "INE065507AZ6",
       "symbol": "976540",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE065507AP7",
-      "symbol": "975932",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -25707,13 +25658,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE200W07407",
-      "symbol": "975668",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE774L07081",
       "symbol": "975412",
       "exchange": "BSE",
@@ -25807,13 +25751,6 @@
     {
       "isin": "INE526R07025",
       "symbol": "975503",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE200W08124",
-      "symbol": "976101",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -25980,13 +25917,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE200W07415",
-      "symbol": "973862",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE104W08060",
       "symbol": "977139",
       "exchange": "BSE",
@@ -26059,13 +25989,6 @@
     {
       "isin": "INE0BUS07BM8",
       "symbol": "976322",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE200W07381",
-      "symbol": "975472",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -30908,13 +30831,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE134E07CG1",
-      "symbol": "938696",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE134E08NP7",
       "symbol": "976496",
       "exchange": "BSE",
@@ -31328,13 +31244,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE134E07CF3",
-      "symbol": "938698",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE134E07CJ5",
       "symbol": "938704",
       "exchange": "BSE",
@@ -31344,6 +31253,13 @@
     {
       "isin": "INE020B08DX9",
       "symbol": "974222",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE245A08307",
+      "symbol": "977967",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -31393,13 +31309,6 @@
     {
       "isin": "INE153A08188",
       "symbol": "975462",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE020B08EI8",
-      "symbol": "974757",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -34114,6 +34023,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE721A07SS4",
+      "symbol": "977963",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE2I7F15012",
       "symbol": "977125",
       "exchange": "BSE",
@@ -35500,13 +35416,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE891K07846",
-      "symbol": "974808",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE0YRB07035",
       "symbol": "977239",
       "exchange": "BSE",
@@ -36592,6 +36501,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE0DBJ07242",
+      "symbol": "977968",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE414G07IC8",
       "symbol": "938558",
       "exchange": "BSE",
@@ -36790,6 +36706,13 @@
     {
       "isin": "INE670K07281",
       "symbol": "976764",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE511C07AC7",
+      "symbol": "977974",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -42255,13 +42178,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE148I07FJ9",
-      "symbol": "954464",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE244L07523",
       "symbol": "938512",
       "exchange": "BSE",
@@ -42290,6 +42206,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE2XU215010",
+      "symbol": "977966",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE448U07349",
       "symbol": "977919",
       "exchange": "BSE",
@@ -42299,13 +42222,6 @@
     {
       "isin": "INE787H07370",
       "symbol": "961822",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE626J07152",
-      "symbol": "953272",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -43580,6 +43496,13 @@
     {
       "isin": "INE522D07CH7",
       "symbol": "975919",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE918K07QW1",
+      "symbol": "977973",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -44957,6 +44880,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE124N07812",
+      "symbol": "977970",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE124N07713",
       "symbol": "975747",
       "exchange": "BSE",
@@ -46021,13 +45951,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE1EY607018",
-      "symbol": "976360",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE192U07392",
       "symbol": "977776",
       "exchange": "BSE",
@@ -46156,13 +46079,6 @@
     {
       "isin": "INE07XR08015",
       "symbol": "975113",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE134E08DS2",
-      "symbol": "950465",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -50046,6 +49962,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE08E807183",
+      "symbol": "977964",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE01EQ07111",
       "symbol": "975881",
       "exchange": "BSE",
@@ -50774,6 +50697,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE2FMX01012",
+      "symbol": "544808",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE430R01023",
       "symbol": "539528",
       "exchange": "BSE",
@@ -50951,13 +50881,6 @@
     {
       "isin": "INE442H14543",
       "symbol": "732069",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE14LE14079",
-      "symbol": "731491",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -51418,6 +51341,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE423A14ZJ7",
+      "symbol": "732093",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE423A07419",
       "symbol": "940475",
       "exchange": "BSE",
@@ -51518,6 +51448,13 @@
     {
       "isin": "INE065507AL6",
       "symbol": "975614",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE916Y01027",
+      "symbol": "544200",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -51985,6 +51922,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE08E401029",
+      "symbol": "542770",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE840D01015",
       "symbol": "526519",
       "exchange": "BSE",
@@ -52435,6 +52379,13 @@
     {
       "isin": "INE742F14RG2",
       "symbol": "731656",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE742F14RI8",
+      "symbol": "732091",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -53665,13 +53616,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE296A14B64",
-      "symbol": "729845",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE296A14H92",
       "symbol": "731925",
       "exchange": "BSE",
@@ -53679,15 +53623,8 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE296A14B72",
-      "symbol": "729856",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE296A14B98",
-      "symbol": "729866",
+      "isin": "INE296A14I26",
+      "symbol": "732104",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -53695,13 +53632,6 @@
     {
       "isin": "INE296A14I00",
       "symbol": "731961",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE296A14F94",
-      "symbol": "731515",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -53833,6 +53763,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE01C314GK1",
+      "symbol": "732081",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE01C314GA2",
       "symbol": "731877",
       "exchange": "BSE",
@@ -53882,29 +53819,8 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE01C314FG1",
-      "symbol": "731484",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE01C314FE6",
-      "symbol": "731492",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE01C314GE4",
       "symbol": "731921",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE01C314FD8",
-      "symbol": "731502",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -53926,13 +53842,6 @@
     {
       "isin": "INE01C314FO5",
       "symbol": "731703",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE01C314FF3",
-      "symbol": "731513",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -54302,6 +54211,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE257A14AJ2",
+      "symbol": "732090",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE257A14AI4",
       "symbol": "732057",
       "exchange": "BSE",
@@ -54435,6 +54351,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE655I01032",
+      "symbol": "533006",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE839A01021",
       "symbol": "526709",
       "exchange": "BSE",
@@ -54451,13 +54374,6 @@
     {
       "isin": "INE356C01022",
       "symbol": "519500",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE027214936",
-      "symbol": "731529",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -54500,13 +54416,6 @@
     {
       "isin": "INE373T01047",
       "symbol": "539607",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE924N01024",
-      "symbol": "539175",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -54841,13 +54750,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE707C01018",
-      "symbol": "511505",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE0KZM01011",
       "symbol": "543621",
       "exchange": "BSE",
@@ -55142,13 +55044,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE477A14EF6",
-      "symbol": "731504",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE477A14EK6",
       "symbol": "731942",
       "exchange": "BSE",
@@ -55268,13 +55163,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE180C14797",
-      "symbol": "731482",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE180C14706",
       "symbol": "731356",
       "exchange": "BSE",
@@ -55284,13 +55172,6 @@
     {
       "isin": "INE180C14714",
       "symbol": "731362",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE180C14805",
-      "symbol": "731497",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -56458,15 +56339,15 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE755K14FS4",
-      "symbol": "732061",
+      "isin": "INE0I3401014",
+      "symbol": "543593",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
     },
     {
-      "isin": "INE0A1101019",
-      "symbol": "543636",
+      "isin": "INE755K14FS4",
+      "symbol": "732061",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -56593,6 +56474,13 @@
     {
       "isin": "INE0NIJ01025",
       "symbol": "543848",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE2KRP01017",
+      "symbol": "544823",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -57046,6 +56934,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE422H14529",
+      "symbol": "732079",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE422H14354",
       "symbol": "731477",
       "exchange": "BSE",
@@ -57069,13 +56964,6 @@
     {
       "isin": "INE815R07022",
       "symbol": "975254",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE741L01018",
-      "symbol": "534674",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -57251,6 +57139,13 @@
     {
       "isin": "INE468N07BE1",
       "symbol": "975702",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE086A14899",
+      "symbol": "732075",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -57550,15 +57445,15 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE804I14YI6",
-      "symbol": "730936",
+      "isin": "INE804I14YS5",
+      "symbol": "732086",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
     },
     {
-      "isin": "INE804I14YN6",
-      "symbol": "731519",
+      "isin": "INE804I14YT3",
+      "symbol": "732100",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -59937,6 +59832,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE871H01011",
+      "symbol": "532951",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE632W01016",
       "symbol": "540654",
       "exchange": "BSE",
@@ -60380,13 +60282,6 @@
     {
       "isin": "INE172V14091",
       "symbol": "731555",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE0P1414048",
-      "symbol": "731975",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -61589,8 +61484,8 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE879F14MV2",
-      "symbol": "731503",
+      "isin": "INE879F14NH9",
+      "symbol": "732103",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -61710,6 +61605,20 @@
     {
       "isin": "INE321N07608",
       "symbol": "977375",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE321N14489",
+      "symbol": "732085",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE321N14497",
+      "symbol": "732099",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -61890,6 +61799,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE071G14IC2",
+      "symbol": "732097",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE071G14HX0",
       "symbol": "731707",
       "exchange": "BSE",
@@ -61899,13 +61815,6 @@
     {
       "isin": "INE071G14IA6",
       "symbol": "732029",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE071G14HU6",
-      "symbol": "731518",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -62471,7 +62380,7 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE826B01018",
+      "isin": "INE826B01026",
       "symbol": "523586",
       "exchange": "BSE",
       "exchange_suffix": "BO",
@@ -62919,13 +62828,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE849D14HZ1",
-      "symbol": "731531",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE684B01029",
       "symbol": "508807",
       "exchange": "BSE",
@@ -63234,13 +63136,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE824H14TU1",
-      "symbol": "731209",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE824H14UM6",
       "symbol": "731820",
       "exchange": "BSE",
@@ -63297,6 +63192,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE824H14US3",
+      "symbol": "732096",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE824H14TJ4",
       "symbol": "730939",
       "exchange": "BSE",
@@ -63348,6 +63250,13 @@
     {
       "isin": "INE824H14UD5",
       "symbol": "731644",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE824H14UR5",
+      "symbol": "732080",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -64914,15 +64823,15 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE975F14B42",
-      "symbol": "729834",
+      "isin": "INE975F14C74",
+      "symbol": "730772",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
     },
     {
-      "isin": "INE975F14C74",
-      "symbol": "730772",
+      "isin": "INE975F14C90",
+      "symbol": "732105",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -64984,8 +64893,29 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE916D146W7",
+      "symbol": "732094",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE916D146V9",
+      "symbol": "732095",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE916D146Q9",
       "symbol": "731480",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE916D146X5",
+      "symbol": "732098",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -65021,13 +64951,6 @@
     {
       "isin": "INE916D145Z2",
       "symbol": "730427",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE916D145P3",
-      "symbol": "730088",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -65224,13 +65147,6 @@
     {
       "isin": "INE403Q07FD4",
       "symbol": "939961",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE07HK14433",
-      "symbol": "730933",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -65784,13 +65700,6 @@
     {
       "isin": "INE920T01011",
       "symbol": "539927",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE060901027",
-      "symbol": "543240",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -68169,13 +68078,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE101Q14207",
-      "symbol": "729865",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE101Q14355",
       "symbol": "731701",
       "exchange": "BSE",
@@ -69121,6 +69023,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE850M14CT4",
+      "symbol": "732101",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE454M01024",
       "symbol": "539917",
       "exchange": "BSE",
@@ -69737,6 +69646,20 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE342T14GY8",
+      "symbol": "732076",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE342T14GZ5",
+      "symbol": "732084",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE342T14FJ1",
       "symbol": "730924",
       "exchange": "BSE",
@@ -69744,8 +69667,8 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE342T14FK9",
-      "symbol": "730927",
+      "isin": "INE342T14HB4",
+      "symbol": "732102",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -69779,13 +69702,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE342T14FG7",
-      "symbol": "730811",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE342T14GN1",
       "symbol": "731689",
       "exchange": "BSE",
@@ -69809,13 +69725,6 @@
     {
       "isin": "INE342T14GG5",
       "symbol": "731516",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE342T14GH3",
-      "symbol": "731517",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -70556,13 +70465,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE301O01023",
-      "symbol": "544467",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE01BL01012",
       "symbol": "542628",
       "exchange": "BSE",
@@ -70740,13 +70642,6 @@
     {
       "isin": "INE918K07QN0",
       "symbol": "977569",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE918K14DJ2",
-      "symbol": "731522",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -72159,6 +72054,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE07S101038",
+      "symbol": "543915",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE160H01019",
       "symbol": "532676",
       "exchange": "BSE",
@@ -72238,6 +72140,13 @@
     {
       "isin": "INE420C14276",
       "symbol": "731455",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE420C14292",
+      "symbol": "732088",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -73300,13 +73209,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE084Q01012",
-      "symbol": "537785",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE0ZN101029",
       "symbol": "544503",
       "exchange": "BSE",
@@ -74217,13 +74119,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE302D01024",
-      "symbol": "517035",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE001O01029",
       "symbol": "530251",
       "exchange": "BSE",
@@ -74303,13 +74198,6 @@
     {
       "isin": "INE552N01023",
       "symbol": "511169",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE891D14B60",
-      "symbol": "731499",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -74730,6 +74618,13 @@
     {
       "isin": "INE016P07286",
       "symbol": "977887",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE0Z1N07025",
+      "symbol": "977969",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -76310,6 +76205,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE618R14042",
+      "symbol": "732078",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE07GA01011",
       "symbol": "543391",
       "exchange": "BSE",
@@ -76424,13 +76326,6 @@
     {
       "isin": "INE118R01032",
       "symbol": "540259",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE274V01019",
-      "symbol": "540425",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -77094,7 +76989,7 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE658D01011",
+      "isin": "INE658D01029",
       "symbol": "513472",
       "exchange": "BSE",
       "exchange_suffix": "BO",
@@ -77696,6 +77591,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE285B01017",
+      "symbol": "500285",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE631E01024",
       "symbol": "539895",
       "exchange": "BSE",
@@ -78025,6 +77927,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE924N01024",
+      "symbol": "539175",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE347I01010",
       "symbol": "531616",
       "exchange": "BSE",
@@ -78279,13 +78188,6 @@
     {
       "isin": "INE886B01012",
       "symbol": "530419",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE235C20010",
-      "symbol": "751123",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -78746,6 +78648,13 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE142I01023",
+      "symbol": "532890",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE14OX01013",
       "symbol": "544471",
       "exchange": "BSE",
@@ -78853,6 +78762,13 @@
     {
       "isin": "INE920B01019",
       "symbol": "532262",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE280A14583",
+      "symbol": "732074",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -79140,13 +79056,6 @@
     {
       "isin": "INE628D01014",
       "symbol": "523120",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
-      "isin": "INE723X14MH4",
-      "symbol": "731426",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -79509,13 +79418,6 @@
       "tier": "TIER_3"
     },
     {
-      "isin": "INE371K14DK2",
-      "symbol": "731521",
-      "exchange": "BSE",
-      "exchange_suffix": "BO",
-      "tier": "TIER_3"
-    },
-    {
       "isin": "INE371K14DN6",
       "symbol": "731753",
       "exchange": "BSE",
@@ -79700,6 +79602,13 @@
     {
       "isin": "INE081A14HC6",
       "symbol": "731883",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE081A14HF9",
+      "symbol": "732089",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -79971,8 +79880,22 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE583D14956",
+      "symbol": "732077",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE583D14907",
       "symbol": "731648",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE583D14964",
+      "symbol": "732087",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
@@ -80839,6 +80762,27 @@
       "tier": "TIER_3"
     },
     {
+      "isin": "INE0P1414105",
+      "symbol": "732082",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE0P1414113",
+      "symbol": "732083",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE0P1414121",
+      "symbol": "732092",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
       "isin": "INE01HV14AU9",
       "symbol": "731144",
       "exchange": "BSE",
@@ -80848,6 +80792,13 @@
     {
       "isin": "INE01HV14AX3",
       "symbol": "731363",
+      "exchange": "BSE",
+      "exchange_suffix": "BO",
+      "tier": "TIER_3"
+    },
+    {
+      "isin": "INE0P1414048",
+      "symbol": "731975",
       "exchange": "BSE",
       "exchange_suffix": "BO",
       "tier": "TIER_3"
